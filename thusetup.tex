@@ -122,6 +122,10 @@
 
 % 定理类环境宏包
 \usepackage[amsmath,thmmarks,hyperref]{ntheorem}
+\newcommand\F{F}
+\newcommand\Pf{Pf}
+\DeclareMathOperator{\End}{End}
+\DeclareMathOperator{\Frob}{Frob}
 
 % 给自定义的宏后面自动加空白
 % \usepackage{xspace}
@@ -149,6 +153,33 @@
 
 % 定义自己常用的东西
 % \def\myname{薛瑞尼}
+
+% 代码
+\usepackage{listings}
+\usepackage{xcolor}
+\renewcommand{\lstlistingname}{代码}% Listing -> 代码
+\lstset{
+	columns=fixed,       
+	numbers=left,                                                                                       % 在左侧显示行号
+	numberstyle=\tiny\color{gray},                                                 % 设定行号格式
+	frame=none,                                                                                          % 不显示背景边框
+	backgroundcolor=\color[RGB]{245,245,244},                   % 设定背景颜色
+	keywordstyle=\color[RGB]{40,40,255},                                  % 设定关键字颜色
+	numberstyle=\footnotesize\color{darkgray},           
+	commentstyle=\it\color[RGB]{0,96,96},                                % 设置代码注释的格式
+	stringstyle=\rmfamily\slshape\color[RGB]{128,0,0},    % 设置字符串格式
+	showstringspaces=false,                                                                % 不显示字符串中的空格
+	language=c++,                                                                                       % 设置语言
+	tabsize=2,
+	otherkeywords={uint},
+}
+
+% 算法
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\floatname{algorithm}{算法}
+\renewcommand{\algorithmicrequire}{\textbf{输入：}}
+\renewcommand{\algorithmicensure}{\textbf{输出：}}
 
 % hyperref 宏包在最后调用
 \usepackage{hyperref}
