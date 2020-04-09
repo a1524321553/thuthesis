@@ -59,6 +59,7 @@ int funcB(int i) {
 %静态分析是指在不运行代码的情况下，对程序源代码进行行为分析，从而判定程序是否满足某种特性。在代码的审查与优化、代码的缺陷分析与修复等方面有着大量应用。衡量静态分析技术的优劣通常考虑两个方面：分析精度和分析效率。分析精度用于衡量程序的实际行为与分析结果之间的匹配程度，分析效率则注重程序分析所消耗的资源大小，包括时间、存储的开销等。通常，程序分析的精度与效率是不可兼得的：分析精度的提高往往伴随着分析效率的下降，在实际应用中，我们往往需要平衡静态分析的精度与资源消耗，在不占用太多的资源下获得较好的分析精度一直是静态分析领域所重点关注的问题之一。
 
 \subsection{控制流自动机}
+\label{sec:控制流自动机}
 
 控制流自动机（Control-flow Automaton，CFA）是命令式程序的一种语义等价表示方法，它是一个有向图：
 \begin{definition}
@@ -67,9 +68,28 @@ int funcB(int i) {
 
 在本文中，若无特殊说明，CFA是LLVM-IR语言上的等价表示，有向边$ e $根据其表示的指令的不同，可分为如下几类：
 \begin{itemize}
-	\item 空白边（BlankEdge）：表示没有执行动作的边。$ act(e) = \varepsilon $；
-	\item 假设边（AssumeEdge）：描述了假设条件是否成立。$ act(e) = (\%cmp) $
+	\item 空白边（BlankEdge）：表示没有执行动作的边。即$ act(e) = \varepsilon $；
+	
+	\item 假设边（AssumeEdge）：描述了假设条件是否成立。约定$ act(e) = (\%cmp, truth) $，其中$ \%cmp $为条件变量，它对应于LLVM-IR中i1类型的变量，表示假设条件。$ truth \in \{0, 1\}$为条件取值，表示当前边上假设条件变量$ \%cmp $的具体取值。一般地，我们用$ cond(e) $表示假设边的条件变量$ \%cmp $，用$ truth(e) $表示条件变量的取值$ truth $。
+	
+	\item Phi边（PhiEdge）：描述了LLVM-IR中的phi指令。约定$ act(e) = (\%phi, index) $，其中$ \%phi $对应于phi指令，$ index $指示phi边上的第几个操作数作为当前指令的返回结果。
+	
+	\item 指令边（InstructionEdge）：是CFA中最常见的边，描述了当前边执行了一条LLVM-IR指令。约定$ act(e) = (\%inst) $，其中$ \%inst $为所执行的指令。
+	
+%	\item 函数摘要边（FunctionSummaryEdge）
+
+%	\item 函数调用边与函数返回边（FunctionCallEdge, FunctionReturnEdge）：
 \end{itemize}
+
+为了便于描述，定义函数$ type $用于获取边的类型：
+\begin{align}{\label{align:edgeType}}
+	type(e) := \begin{cases}
+		blank & e \in BlankEdge\\
+		assume & e \in AssumeEdge\\
+		phi & e \in PhiEdge\\
+		inst & e \in InstructionEdge
+	\end{cases}
+\end{align}
 
 \subsection{可配置程序分析框架} 
 
@@ -79,7 +99,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 
 算法\ref{alg:CPA算法}描述了CPA的算法流程：算法以分析$ \mathbb{D}$、CFA图$ G $和初始状态$ e_0 \in E $作为输入，通过维护工作队列$ waitlist $和可达状态集$ R $并根据转移关系$ \rightsquigarrow $来计算当前状态$ e $的后继状态。工作队列和可达集的维护算法如算法\ref{alg:UpdateRW}所示，对每个后继状态$ e' $使用$ merge $算子来更新所有可达状态，如果可达状态$ e'' $被更新，则将该状态加入到等待队列$ waitlist $中以更新其后继状态。如果更新后的可达状态无法覆盖$ e' $，则将该状态分别加入$ waitlist $和可达集中。
 
-\begin{algorithm}[H]
+\begin{breakablealgorithm}
 	\caption{CPA算法}
 	\label{alg:CPA算法}
 	\begin{algorithmic}[1]
@@ -96,9 +116,9 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 		\EndWhile
 		
 	\end{algorithmic}
-\end{algorithm}
+\end{breakablealgorithm}
 
-\begin{algorithm}[H]
+\begin{breakablealgorithm}
 	\caption{UpdateRW算法}
 	\label{alg:UpdateRW}
 	\begin{algorithmic}[1]
@@ -118,7 +138,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 		\EndFunction
 		
 	\end{algorithmic}
-\end{algorithm}
+\end{breakablealgorithm}
 
 \section{基于线性空间的抽象域设计}
 
@@ -135,9 +155,24 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 
 整型变量的可能取值是一个整数的集合，在这里我们使用扩展的整数RangeInteger来表示一个具体的整数，它是整数域$ \mathbf{Z} $的一个拓展。
 
-记$ \mathbf{I} := \mathbf{Z} \cup \{ +\infty, -\infty \}  $为扩展的整数理论域。其偏序关系（$ \le $）为$ \mathbf{Z} $上的自然扩展，对于元素$ -\infty $与$ +\infty $，规定$ -\infty < +\infty $，且对任意$ x \in \mathbf{Z} $，有$ x < +\infty $以及$ -\infty < x $。特殊地，$ -\infty $与$ -\infty $、$ +\infty $与$ +\infty $无法比较。
+\begin{definition}
+	记$ D_I := \mathbf{Z} \cup \{ +\infty, -\infty, arb, nan\}  $为扩展的整数理论域。
+	\begin{itemize}
+		\item $ D_I $上的最大元（$ \top_I $）为$ arb $，它表示任意值；最小元（$ \bot_I $）为$ nan $，它表示非数；
+		
+		\item $ D_I $上的偏序关系（$ \le_I $）为$ \mathbf{Z} $上的自然扩展，对于元素$ -\infty $与$ +\infty $，规定$ -\infty < +\infty $，且对任意$ x \in \mathbf{Z} $，有$ x < +\infty $以及$ -\infty < x $。特殊地，$ -\infty $与$ -\infty $、$ +\infty $与$ +\infty $无法比较，$ \bot_I, \top_I $与其他任意元素无法比较。
+		
+		\item $ D_I $上的上确界操作（$ \sqcup_I $）定义为：\\
+		\centerline{$ a \sqcup_I b := \begin{cases}
+			\top_I & a \ne \bot_I \land b \ne \bot_I\\
+			a & b = \bot_I\\
+			b & a = \bot_I\\
+			\bot_I & a = \bot_I \land b = \bot_I
+			\end{cases} $}
+	\end{itemize}
+\end{definition}
 
-对于元素$ -\infty $或$ +\infty $参与的运算，其规则如表\ref{tab:Integer运算规则}所示。其中，函数$ signum $为取符号数，具体定义如下：
+对于元素$ -\infty $或$ +\infty $参与的运算，其规则如表\ref{tab:RangeInteger运算规则}所示。其中，函数$ signum $为取符号数，具体定义如下：
 \begin{align}
 	signum(x) := \begin{cases}
 		1 & (x \in \mathbf{Z} \land x > 0) \lor x = +\infty\\
@@ -146,91 +181,105 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 	\end{cases}
 \end{align}
 
-特别的，元素$ +\infty $与$ -\infty $所参与的某些运算是未定义的。这样的运算在表中记录为undef，如$ (+\infty) +_I (-\infty), (+\infty) \div_I (+\infty)  $等。
+特别的，元素$ +\infty $与$ -\infty $所参与的某些运算是未定义的。这样的运算在表中记录为$ nan $，如$ (+\infty) +_I (-\infty), (+\infty) \div_I (+\infty)  $等。
 
-\begin{table}[H]
-	\centering
-	\begin{minipage}[t]{0.85\linewidth} 
-		\caption[RangeInteger运算规则]{RangeInteger运算规则}
-		\label{tab:Integer运算规则}
-		\begin{tabularx}{\linewidth}{cclc}
-			\toprule[1.5pt]
-			{\heiti 运算} & {\heiti 符号} & \multicolumn{1}{c}{\heiti 运算规则} \\\midrule[1pt]
-			
-			negate & $ neg_I $ & $  neg_I(x) :=  \begin{cases}
-				-x & x \ne \pm\infty\\
-				-\infty & x = +\infty\\
-				+\infty & x = -\infty\\
-			\end{cases}$\\
-			
-			add &$  +_I $ & $ x +_I y :=  \begin{cases}
-				x + y & x, y \ne \pm\infty\\
-				x & x = \pm\infty \land y \ne \pm\infty\\
-				y & x \ne \pm\infty \land y = \pm\infty\\
-				x & x, y = \pm\infty \land signum(x) = signum(y) \\
-				\text{undef} & \text{other cases}
-			\end{cases}$ \\
-			
-			subtract & $ -_I $ & $ x -_I y := \begin{cases}
-				x - y & x, y \ne \pm\infty\\
-				x & x = \pm\infty \land y \ne \pm\infty\\
-				neg(y) & x \ne \pm\infty \land y = \pm\infty\\
-				x & x, y = \pm\infty \land signum(x) \ne signum(y) \\
-				\text{undef} & \text{other cases}
-			\end{cases} $\\
-			
-			multiply & $ \times_I $ & $ x \times_I y := \begin{cases}
-				x \times y & x, y \ne \pm\infty\\
-				+\infty & signum(x) \times signum(y) > 0\\
-				-\infty & signum(x) \times signum(y) < 0\\
-				\text{undef} & \text{other cases}
-			\end{cases} $\\
-			
-			\begin{tabular}{c}
-				divide\\
-				$ (y \ne 0) $\\
-			\end{tabular} & $ \div_I $ & $ x \div_I y := \begin{cases}
-				x \div y & x, y \ne \pm\infty\\
-				0 & x \ne \pm\infty \land y = \pm\infty\\
-				+\infty \times_I signum(x \times_I y) & x = \pm\infty \land y \ne \pm\infty\\				
-				\text{undef} & \text{other cases}
-			\end{cases} $\\
-			
-			\begin{tabular}{c}
-				modular\\
-				$ (y > 0) $\\
-			\end{tabular} & $ mod_I $ & $ x \mod_I y := \begin{cases}
-			x \mod y & x, y \ne \pm\infty\\
-			x & x \ge 0 \land y = +\infty\\
-			y & x < 0 \land y =+\infty\\
-			\text{undef} & \text{other cases}
-			\end{cases} $\\
-			
-			\begin{tabular}{c}
-				and\\
-				or\\
-				xor\\
-				shl\\
-				shr
-			\end{tabular} & \begin{tabular}{c}
-			$ and_I $\\
-			$ or_I $\\
-			$ xor_I $\\
-			$ <<_I $\\
-			$ >>_I $
-		\end{tabular} & $ x \cdot_{op_I} y := \begin{cases}
-			x \cdot_{op} y & x, y \ne \pm\infty\\
-			\text{undef} & \text{other cases}
-			\end{cases} $\\
-		\bottomrule[1.5pt]
-		\end{tabularx}
-		\end{minipage}
-\end{table}
+\begin{longtable}{cclc}
+	\caption[RangeInteger运算规则]{RangeInteger运算规则}
+	\label{tab:RangeInteger运算规则}  \\ % add \\ command to tell LaTeX to start a new line	
+	
+	% Appear table header at the first page as well
+	\toprule[1.5pt]	
+	{\heiti 运算} & {\heiti 符号} & \multicolumn{1}{c}{\heiti 运算规则} \\
+	\midrule[1pt]
+	\endfirsthead
+	
+	% Appear the table header at the top of every page
+	\multicolumn{3}{c}{续表~\thetable\hskip1em RangeInteger运算规则}\\
+	\toprule[1.5pt]	
+	{\heiti 运算} & {\heiti 符号} & \multicolumn{1}{c}{\heiti 运算规则} \\
+	\midrule[1pt]
+	\endhead 
+	
+	% Appear \hline at the bottom of every page
+	\hline
+	\multicolumn{3}{r}{续下页}
+	\endfoot 
+	\endlastfoot
+	
+	% data begins here				
+		negate & $ neg_I $ & $  neg_I(x) :=  \begin{cases}
+			-x & x \ne \pm\infty\\
+			-\infty & x = +\infty\\
+			+\infty & x = -\infty\\
+		\end{cases}$\\
+		
+		add &$  +_I $ & $ x +_I y :=  \begin{cases}
+			x + y & x, y \ne \pm\infty\\
+			x & x = \pm\infty \land y \ne \pm\infty\\
+			y & x \ne \pm\infty \land y = \pm\infty\\
+			x & x, y = \pm\infty \land signum(x) = signum(y) \\
+			nan & \text{other cases}
+		\end{cases}$ \\
+		
+		subtract & $ -_I $ & $ x -_I y := \begin{cases}
+			x - y & x, y \ne \pm\infty\\
+			x & x = \pm\infty \land y \ne \pm\infty\\
+			neg(y) & x \ne \pm\infty \land y = \pm\infty\\
+			x & x, y = \pm\infty \land signum(x) \ne signum(y) \\
+			nan & \text{other cases}
+		\end{cases} $\\
+		
+		multiply & $ \times_I $ & $ x \times_I y := \begin{cases}
+			x \times y & x, y \ne \pm\infty\\
+			+\infty & signum(x) \times signum(y) > 0\\
+			-\infty & signum(x) \times signum(y) < 0\\
+			nan & \text{other cases}
+		\end{cases} $\\
+		
+		\begin{tabular}{c}
+			divide\\
+			$ (y \ne 0) $\\
+		\end{tabular} & $ \div_I $ & $ x \div_I y := \begin{cases}
+			x \div y & x, y \ne \pm\infty\\
+			0 & x \ne \pm\infty \land y = \pm\infty\\
+			+\infty \times_I signum(x \times_I y) & x = \pm\infty \land y \ne \pm\infty\\				
+			nan & \text{other cases}
+		\end{cases} $\\
+		
+		\begin{tabular}{c}
+			modular\\
+			$ (y > 0) $\\
+		\end{tabular} & $ mod_I $ & $ x \mod_I y := \begin{cases}
+		x \mod y & x, y \ne \pm\infty\\
+		x & x \ge 0 \land y = +\infty\\
+		y & x < 0 \land y =+\infty\\
+		nan & \text{other cases}
+		\end{cases} $\\
+		
+		\begin{tabular}{c}
+			and\\
+			or\\
+			xor\\
+			shl\\
+			shr
+		\end{tabular} & \begin{tabular}{c}
+		$ and_I $\\
+		$ or_I $\\
+		$ xor_I $\\
+		$ <<_I $\\
+		$ >>_I $
+	\end{tabular} & $ x \cdot_{op_I} y := \begin{cases}
+		x \cdot_{op} y & x, y \ne \pm\infty\\
+		nan & \text{other cases}
+		\end{cases} $\\
+	
+	% more data here
+	\bottomrule[1.5pt]
+\end{longtable}
 
+\subsection{线性区间（Range）理论域}
 
-\subsection{线性区间理论域Range}
-
-线性区间理论域Range一个整数区间，表示整型变量的可能取值范围，是由两个整数$ x, y $构成的二元组。这里，$ x, y $为扩展的整数域RangeInteger上的元素，其定义与偏序关系定义如下。
+线性区间Range一个整数区间，表示整型变量的可能取值范围，它是由两个整数$ x, y $构成的二元组。这里，$ x, y $为扩展的整数域RangeInteger上的元素，其定义与偏序关系定义如下。
 
 \begin{definition}
 	线性区间理论域$ D_R :=  \{ [x, y] | x \in \mathbf{I}, y \in \mathbf{I}, x \le y \} \cup \{ \emptyset \}$是一个半格：	
@@ -240,7 +289,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 		\centerline{$ [x_1, y_1] \le_R [x_2, y_2] \iff x_2 \le x_1 \land y_1 \le y_2 $；}
 		\item $ D_R $上的上确界操作（$ \sqcup_R $）定义为：\\	
 		\centerline{$ [x_1, y_1] \sqcup_R [x_2, y_2] := [\min(x_1, x_2), \max(y_1, y_2)] $，}  \\
-		此处$ \max $和$ \min $为在$ \mathbf{I} $上的自然扩展。
+		此处$ \max $和$ \min $为$ D_I $上的自然扩展。
 	\end{itemize}
 \end{definition}
 
@@ -405,6 +454,7 @@ Range的比较规则定义如下：
 \end{align}
 
 \subsection{线性多区间（MultiRange）理论域}
+\label{sec:MultiRange}
 
 通过分析图\ref{fig:codeExampleForSignRange}所示的代码案例，易知在整型变量分析时，使用单独的线性区间Range会造成一定程度的精度损失，这时需要提供一个更为精确的理论域来对整型变量的取值范围做抽象。
 
@@ -432,7 +482,7 @@ Range的比较规则定义如下：
 
 上述的定义中使用了MultiRange的构造函数$ [[\cdot]]_{MR} $，其函数逻辑如算法\ref{alg:MultiRange}所示。该函数接受一个由Range组成的集合$ ranges $或直接给出待组合的Range列表$ range_1, range_2, \dots, range_n $。首先根据每个区间的左值和右值进行排序，得到有序的Range列表$ ranges $。并将$ ranges $中所有相互包含或相邻的区间进行合并，得到有序的且不互相包含、连接的区间列表$ nRanges $。为了保证得到的MultiRange中Range的个数小于$ L_{MR} $，在算法结束前不断合并前后相邻的且距离最小的Range直至其个数满足要求。
 
-\begin{algorithm}[H]
+\begin{breakablealgorithm}
 	\caption{MultiRange的构造器$ [[\cdot]]_{MR} $}
 	\label{alg:MultiRange}
 	\begin{algorithmic}[1]
@@ -459,7 +509,7 @@ Range的比较规则定义如下：
 		\\\Return $ toList(nRanges) $
 		
 	\end{algorithmic}
-\end{algorithm}
+\end{breakablealgorithm}
 
 我们同样在MultiRange上定义一些基础运算操作，如表\ref{tab:MultiRange运算规则}所示。为方便起见，记$ ranges = [range_i, \dots, range_n] $为一个MultiRange，它是一个有序Range列表。列表$ ranges $沿用集合上的符号$ \times_{\cdot_{op}} $，即$ rangesA \times_{\cdot_{op}} rangesB = toList(set_{\cdot_{op}}) $，其中$ set_{\cdot_{op}} = \{rangeA_i \cdot_{op} rangeB_j \, | \, rangeA_i \in rangesA, rangesB_j \in rangesB\, , 0 \le i \le m, 0 \le j \le n\}$。
 
@@ -563,21 +613,22 @@ MultiRange的比较规则定义如下：
 \end{itemize}
 
 \subsection{位敏感的线性区间（SignRange）理论域}
+\label{sec:SignRange}
 
 在前面介绍的RangeInteger、Range与MultiRange抽象表示均未考虑整型变量在计算机上的存储格式，即对变量在计算机中所占用字节的大小是不敏感（Bitwidth Sensitive）的。当程序分析需要考虑变量的字节大小时，这类抽象表示往往不能提供整型变量实际所能表示的整数范围。
 
 位敏感的线性区间SignRange = (MultiRange, Bitwidth, Signedness)是一个三元组。其中，MultiRange是上小节所述的线性多区间；Bitwidth表征了变量在计算机中所占用的位宽；Signedness表征了存储于计算机中整型变量在程序中是以有符号还是无符号的形式解析的。
 
 \begin{definition}
-	定义符号性（Signedness）理论域$ D_S := \{Signed, Unsigned, Unknown\} $是一个半格：
+	符号性（Signedness）理论域$ D_{sgn} := \{Signed, Unsigned, Unknown\} $是一个半格：
 	\begin{itemize}
-		\item $ D_S $上的最大元（$ \top_S $）是$ Unsigned $，最小元（$ \bot_S $）是$ Unknown $；
-		\item $ D_S $上的偏序关系（$ \le_S $）定义为：\\
-			\centerline{$ Unknown \le_S Signed \le_S Unknown $}
-		\item $ D_S $上的上确界操作（$ \sqcup_S $）定义为：\\
-			\centerline{$ signedness_1 \sqcup_S signedness_2 := \begin{cases}
-				signedness_2 & signedness_1 \le_S signedness_2\\
-				signedness_1 & signedness_2 \le_S signedness_1\\
+		\item $ D_{sgn} $上的最大元（$ \top_{sgn} $）是$ Unsigned $，最小元（$ \bot_{sgn} $）是$ Unknown $；
+		\item $ D_{sgn} $上的偏序关系（$ \le_{sgn} $）定义为：\\
+			\centerline{$ Unknown \le_{sgn} Signed \le_{sgn} Unknown $}
+		\item $ D_{sgn} $上的上确界操作（$ \sqcup_{sgn} $）定义为：\\
+			\centerline{$ signedness_1 \sqcup_{sgn} signedness_2 := \begin{cases}
+				signedness_2 & signedness_1 \le_{sgn} signedness_2\\
+				signedness_1 & signedness_2 \le_{sgn} signedness_1\\
 				\end{cases} $}
 	\end{itemize}
 \end{definition}
@@ -620,7 +671,7 @@ $ top(SignRange)  = top(bitwidth, signedness):=  $
 
 函数$ |_{to} $的转换规则如算法\ref{alg:toUnsigned}和算法\ref{alg:toSigned}。
 
-\begin{algorithm}[H]
+\begin{breakablealgorithm}
 	\caption{Convert2Unsigned, $ |_{to}(U) $}
 	\label{alg:toUnsigned}
 	\begin{algorithmic}[1]
@@ -641,9 +692,9 @@ $ top(SignRange)  = top(bitwidth, signedness):=  $
 		\EndFor
 		\\\Return $ nSignRange = ([[nRanges]]_{MR}, bitwidth, Unsigned) $
 	\end{algorithmic}
-\end{algorithm}
+\end{breakablealgorithm}
 
-\begin{algorithm}[H]
+\begin{breakablealgorithm}
 	\caption{Convert2Signed, $ |_{to}(S) $}
 	\label{alg:toSigned}
 	\begin{algorithmic}[1]
@@ -666,7 +717,7 @@ $ top(SignRange)  = top(bitwidth, signedness):=  $
 		\EndFor
 		\\\Return $ nSignRange = ([[nRanges]]_{MR}, bitwidth, Signed) $
 	\end{algorithmic}
-\end{algorithm}
+\end{breakablealgorithm}
 
 与MultiRange相比，SignRange的计算规则着重考虑符号性。一般地，二元操作符在运算前需要统一其左右操作数的符号性。如无特殊说明，对操作数$ srA, srB $参与的二元运算$ srA \cdot_{op} srB $将按如下规则（Unifiy Signedness）更新自己的符号性并进行运算：
 
@@ -797,41 +848,92 @@ SignRange的比较规则定义如下：
 
 其中，$ srA', srB' $为根据Unify Signedness规则（\ref{align:Unify规则}）更新符号性和位宽后得到的SignRange。
 
-\subsection{\color{red}线性区间（ApRangeState）抽象域 $\rightarrow$求赐名}
+\subsection{线性区间状态（ApRangeState）理论域}
 
-通过上一小节的分析，使用位敏感的线性区间SignRange可以对整型变量的取值范围做精确的抽象表示和计算模拟，本节介绍的线性区间抽象域ApRangeState则是对控制流自动机（CFA）中所表示的程序状态的精确抽象，它描述了CFA上某程序状态下各个整型变量的取值范围。
+通过上一小节的分析，使用位敏感的线性区间SignRange可以对整型变量的取值范围做精确的抽象表示和计算模拟，本节介绍的线性区间状态ApRangeState则是对控制流自动机（CFA）中所表示的程序状态的精确抽象，它描述了CFA上某程序状态下各个整型变量的取值范围。
 
-线性区间抽象域ApRangeState = \{(AccessPath, SignRange)\}是一个由二元组(AccessPath, SignRange)组成的集合。它实际上是一个从AccessPath到SignRange的映射，描述了在某程序状态下，通过访问路径AccessPath访问得到的整型变量的表示范围SignRange。其中，AccessPath描述了一个整型变量在内存中的访问路径，通过这个访问路径，可以得到整型变量在内存中的唯一表示。
+线性区间状态ApRangeState := AccessPath $ \mapsto $ SignRange是一个从AccessPath到SignRange的映射，描述了在CFA节点$ n $所表示的程序状态下，所有通过访问路径AccessPath访问得到的整型变量的可能取值范围SignRange。其中，AccessPath描述了一个整型变量在内存中的访问路径，通过这个访问路径，可以得到整型变量在内存中的唯一表示。
+
+为方便起见，约定$ aps(ApRangeState) $为取ApRangeState的访问路径集合，约定$ ranges(ApRangeState) $为取ApRangeState的线性区间表示SignRange的集合，约定$ ApRangeState |_{AccessPath} $为取ApRangeState上访问路径为AccessPath的线性区间表示SignRange。
+
+我们定义$ \Gamma_n $为从访问路径AccessPath指向的整型变量到线性区间SignRange的一个映射：对位于CFA状态节点$ n $上的整型变量的访问路径$ accessPath $，有$ \Gamma_n(accessPath) := signRange $。其中，$ signRange $即为对应变量的取值区间的抽象表示。
+
+定义$ \Tau $为从CFA上的程序状态节点$ n $到线性区间状态ApRangeState的一个映射，$ \Tau(n) := apRangeState = \{(ap, sr) | ap \in ApSet(n), sr = \Gamma_n(ap)\} $。其中，$ ApSet(n) $为CFA上节点$ n $表示的程序状态中所有整型变量的访问路径集合。
+
+对于一个待分析程序，我们在其等价表示CFA上定义理论域$ D_{S} $：
 
 \begin{definition}
-	线性区间抽象域$ D_{S_{AR}}  := \{ApRangeState \, | ApRangeState$ 是CFA上程序状态节点的抽象表示，$ ApRangeState =  \{(AccessPath, SignRange)\}   \}  $是一个{\color{red}半格？}
+	在CFA $  = (N, E) $上定义的线性区间状态理论域$ D_S  := \{\Tau(n) \, | \, n \in N  \}  $是一个半格：
 	\begin{itemize}
-		\item $ D_{S_{AR}} $上的最大元（$ \top_{S_{AR}} $）是，最小元（$ \bot_{S_{AR}} $）是$ \{\emptyset\} $
+		\item $ D_S $上的最大元（$ \top_S $）是$ \{(ap, sr) \, | \, ap \in ApSet(n_1) \cup \dots \cup ApSet(n_n), sr = \Gamma_{n_i}(ap) \sqcup_{SR} \dots \sqcup_{SR} \Gamma_{n_n}(ap), n_i \in N \} $，最小元（$ \bot_S $）是$ \emptyset $；
 		
-		\item $ D_{S_{AR}} $上的偏序关系（$ \le_{S_{AR}} $）定义为：\\
-		\centerline{$ apRangeStateA \le_{S_{AR}} apRangeStateB \iff $}\\
-		\centerline{$ apRangeStateA \subseteq apRangeStateB$ }
+		\item $ D_S $上的偏序关系（$ \le_S $）定义为：\\
+		$ apRStateA \le_S apRStateB \iff aps(apRStateA) \subseteq aps(apRStateB) \, \land $ \\
+		\centerline{$ \forall ap \in aps(apRStateA), apRStateA |_{ap} \le_{SR} apRStateB |_{ap} $；}
 		
-		\item $ D_{S_{AR}} $上的上确界操作（$ \sqcup_{S_{AR}} $）定义为：\\
-		\centerline{$ apRangeStateA \sqcup_{S_{AR}} apRangeStateB := $}\\
-		\centerline{$ \{(ap, srA \sqcup_{SR} srB) | (ap, srA) \in apRangeStateA \lor (ap, srB) \in apRangeStateB\} $}
+		\item $ D_S $上的上确界操作（$ \sqcup_S $）定义为：\\
+		$ apRStateA \sqcup_S apRStateB :=  \{(ap, sr) \, | \, ap \in aps(apRStateA) \,\cup $\\
+		\centerline{$ aps( apRStateB), sr = apRStateA |_{ap} \sqcup_{SR} apRStateB |_{ap} \} $}。
 	\end{itemize}
 \end{definition}
 
-在CFA中，
+本节定义的线性区间状态ApRangeState是对控制流自动机CFA中节点$ n $上整型变量取值信息的精确抽象。根据章节\ref{sec:控制流自动机}中的定义，CFA的边$ e $表示从一个程序状态到下一个程序状态的过程，$ act(e) $表示边$ e $所执行的动作。对应的，我们定义理论域$ D_S $上的变迁关系$ \rightsquigarrow_S $为CFA的边$ e $所表示的程序变迁关系的抽象：
+\begin{definition}
+	对于一个控制流自动机CFA = $ (N, E) , E = N \times Ops \times N$，定义线性区间状态理论域$ D_S $上的变迁关系$ \rightsquigarrow_S \, = D_S \times Ops \times D_S $是CFA的边$ e \in E $的抽象表示。其中，$ Ops $为变迁关系上的操作。	我们用函数$ act(\rightsquigarrow_S) $来表示$ Ops $所具体执行的动作，称之为变迁函数。
+	
+	记$ \Upsilon(e) := \rightsquigarrow_S $为从边$ e $到变迁关系$ \rightsquigarrow_S $的一个映射。记符号$ |_{act(\rightsquigarrow_S)} $为在当前线性区间状态应用变迁函数$ act(\rightsquigarrow_S) $得到的新的线性区间状态：$ apRangeState' = apRangeState |_{act(\rightsquigarrow_S)}$。
+\end{definition}
 
+根据CFA上对应的边$ e \in E $所表示的指令类型的不同（见公式\ref{align:edgeType}），$ D_S $上的变迁函数$ act(\rightsquigarrow_S) $随之有不同的定义：
 
-线性区间抽象域上的变迁关系$ \rightsquigarrow_R $定义如下：
+%\item 空白边（BlankEdge）：表示没有执行动作的边。即$ act(e) = \varepsilon $；
+%
+%\item 假设边（AssumeEdge）：描述了假设条件是否成立。约定$ act(e) = (\%cmp, truth) $，其中$ \%cmp $为条件变量，它对应于LLVM-IR中i1类型的变量，表示假设条件。$ truth \in \{0, 1\}$为条件取值，表示当前边上假设条件变量$ \%cmp $的具体取值。一般地，我们用$ cond(e) $表示假设边的条件变量$ \%cmp $，用$ truth(e) $表示条件变量的取值$ truth $。
+%
+%\item Phi边（PhiEdge）：描述了LLVM-IR中的phi指令。约定$ act(e) = (\%phi, index) $，其中$ \%phi $对应于phi指令，$ index $指示phi边上的第几个操作数作为当前指令的返回结果。
+%
+%\item 指令边（InstructionEdge）：是CFA中最常见的边，描述了当前边执行了一条LLVM-IR指令。约定$ act(e) = (\%inst) $，其中$ \%inst $为所执行的指令。
 
-对于形如$ z = x \cdot_{op}  y$这样的操作边（Instruction Edge），其变迁关系为：
+对于空白边$ e \in BlankEdge $上的操作$ act(e) = \varepsilon $，有：
+\begin{align}{\label{tr:blankEdge}}
+	act(\rightsquigarrow_S) := \varepsilon, \, type(e) = blank
+\end{align}
+
+对于假设边$ e \in AssumeEdge $上的操作$ act(e) = (\%cmp, truth) $，有：
+\begin{align}
+	act(\rightsquigarrow_S) := refineVals \circ updateVal(\%cmp, truth), \, type(e) = assume
+\end{align}
+
+对于Phi边$ e \in PhiEdge $上的操作$ act(e) = (\%phi, index) $，有：
+\begin{align}
+	act(\rightsquigarrow_S) := applySelection(\%phi, index), \, type(e) = phi
+\end{align}
+
+对于指令边$ e \in InstructionEdge $上的操作$ act(e) = (\%inst) $，有：
+\begin{align}
+	act(\rightsquigarrow_S) := \begin{cases}
+		handleAllocaInst(inst) & inst \in AllocaInst\\
+		handleBinaryOperator(inst) & inst \in BinaryOperatorInst\\
+		handleCallInst(inst) & inst \in CallInst\\
+		handleCastInst(inst) & inst \in CastInst\\
+		handleCmpInst(inst) & inst \in CmpInst\\
+		handleLoadInst(inst) & inst \in LoadInst\\
+		handleReturnInst(inst) & inst \in ReturnInst\\
+		handleStoreInst(inst) & inst \in StoreInst
+	\end{cases}
+\end{align}
+{\color{orange}
+【这里是老师当时写的】对于形如$ z = x \cdot_{op}  y$这样的操作边（Instruction Edge），其变迁关系为：
 
 \begin{align}
 \frac{X=\alpha_R(x), Y=\alpha_R(y)}{\alpha_R(Z) \leftarrow X \cdot_{op}Y} \quad\textsf{T-R-OP}
 \end{align}
 
 其中，$ \alpha_R $函数表示当前抽象状态中$ a $和$ b $的抽象表示（表示为$ D_R $中的区间）。这里，在区间上的运算操作是在$ I_R $和$ D_R $上运算的扩展，
-
+}
 \subsection{精度优化}
+
+在\ref{sec:MultiRange}和\ref{sec:SignRange}小节中，
 
 \section{基于区间算数的整数缺陷检测方法}
 
