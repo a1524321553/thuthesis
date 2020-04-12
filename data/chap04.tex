@@ -4,12 +4,6 @@
 
 \section{引言}
 
-在软件研发活动中，软件的验证与确认\cite{wagner2016functionally, wallace1989software}是十分重要的步骤。验证（verification）的目的是评估软件是否如软件定义般实现，而确认（validation）的目的则是评估软件是否符合预期的需求。在具体实践时，软件确认通常会面临较大困难\cite{wagner2013software}：要判断软件是否符合预期的需求，实际上是要判断软件实现与软件需求是否匹配。然而两者的描述方式是不同的，前者是具有复杂逻辑结构的代码，后者则是抽象的文字描述，相差较大。
-
-面对上述问题，业界常用的方法是根据需求文档，逐条测试系统是否完成了相应需求\cite{ramler2006value}。但是该方法是不完备的：在软件分支条件复杂的情况下，人们往往不能穷举出程序所有可能的输入与执行路径，造成了软件确认的不完备。另一种常用方法是在确认时尝试理解代码，随后评估代码的逻辑是否与需求相对应。这种方案仍存在两个问题：（1）代码语义的精确理解是复杂的，过程中需要较多的人工介入\cite{ko2007information, murphy2006java, corbi1989program}，难以很好的自动化；（2）软件需求本身的描述通常不够形式化，甚至大部分情况下不够具体。
-
-针对以上问题，本章提出基于精确值流图的程序理解与函数摘要生成算法，该方法拟解决如下问题：（1）自动抽取系统的语义，进而生成摘要信息供与用户进行需求比对；（2）根据生成的摘要内容进一步帮助用户细化需求。
-
 该方法的核心是快速、自动化的从代码中抽取出程序语义，建立程序实现与需求之间的关系，帮助开发人员理解程序进行需求确认。程序理解\cite{boysen1979factors, sackman1968exploratory}领域以往的研究工作主要基于程序切片技术、程序标记技术以及执行可视化技术。
 
 程序切片技术\cite{binkley1996program}本质上是一种代码拆解技术。它通过剔除与指定变量不相关的代码语句，一定程度上减少了用户的代码阅读量。但是由于其并未能给出更上层的程序语义，用户仍需要阅读源码以获取知识。与之相反，程序标记技术\cite{sulir2017labeling}通过在源码上附加辅助信息的方式来帮助用户理解代码。现有工具可提供的辅助信息多种多样，但本质上用户仍要理解代码逻辑，并不能显著提升程序理解速度。执行可视化工具使用动态分析获取程序的执行信息并将之可视化，为了达到分析目的，工具将不同执行过程信息加以融合。其缺点是当程序逻辑复杂时，可视化的效果会变差，且需要为其配置程序运行环境，具有上手难度。 
@@ -19,13 +13,6 @@
 本章中，作者提出了一种基于精确值流图（Value Flow Graph，简称VFG）的自动化程序静态分析算法，该算法通过使用指针分析得到内存模型，基于内存模型构造VFG，并进一步分析得到VFG上的程序语义。
 
 本方法是纯静态分析方法，不依赖于程序的具体执行路径，拥有较好的完备性。分析结果可用于开发人员进行程序理解和需求确认，也可以用于自动化的缺陷分析。
-
-本章的主要贡献如下：
-\begin{enumerate}
-	\item 设计实现了一种基于内存模型的精准值流图分析构造方法，可处理动态内存空间、指针别名等传统数据流分析无法处理的语义关系，可区分数据流依赖、控制流依赖等依赖条件；
-	\item 基于值流图构造分析程序语义，该过程可自动化，并进一步可用于需求确认和缺陷分析，提升程序理解效率，提高代码质量；
-	\item 实现了一套工具并开展相关实验，该工具可自动生成可读的程序摘要，实验结果表明可节约60\%的需求确认时间，并可排除代码中的隐蔽缺陷。
-\end{enumerate}
 
 \section{研究动机}
 
@@ -83,24 +70,61 @@ int calculateGear(uint x, uint y, uint diverse, int oldGear)
 更重要的是，因为人工操作的不稳定，很难抓住需求和代码实现之间的微小差异。例如，在以上代码中实际存在了一个很严重的语义问题，导致在$ diverse ≠ 0 $的情况下代码执行与预期不符。即使有完整的需求文档与源代码，没有工具支持的情况下对其进行一致性确认也是十分困难的事情。
 本章所述工具可以帮助解决以上问题。如表\ref{tab:summaryFromGearLever}的1、3列所示为期望的返回值与控制逻辑，而实际代码的行为如表\ref{tab:summaryFromGearLever}的1、2列所示（方便起见分别将参数$ diverse $和$ oldGear $简写为$ dv $和$ og $）。不难发现程序无法返回$ gear = -2 $且返回值$ gear $与参数$ oldGear $无关，与预期不符。开发人员通过对比2、3列即可确认出该程序行为与需求之间的差异，帮助发现代码问题。该问题的根源在于程序第23行行尾多了一个分号致使控制流出错，经过修改后程序与需求可完全一致。
 
-\begin{table}[htb]
-	\centering
+\begin{longtable}{ccc}
 	\caption{根据代码\ref{code:gearLever}生成的函数摘要}
-	\label{tab:summaryFromGearLever}
-	\begin{tabular}{|c|c|c|}
-		\hline
-		返回值 & 实际的控制逻辑 & 期望的控制逻辑 \\ \hline
-		-2 & - & \begin{tabular}[c]{@{}c@{}}$(x > 690) \wedge (y < 160) \wedge $\\ $(og = -2 ∨ og = -1) \wedge (dv ≠ 0)$\end{tabular} \\ \hline
-		-1 & dv ≠ 0 & $(160 ≤ y ≤ 780) \wedge (dv ≠ 0)$ \\ \hline
-		0 & $(160 ≤ y ≤ 780) \wedge (dv = 0)$ & $(160 ≤ y ≤ 780) \wedge (dv = 0)$ \\ \hline
-		1 & $(x < 380) \wedge (y > 780) \wedge (dv = 0)$ & $(x < 380) \wedge (y > 780)$ \\ \hline
-		2 & $(x < 380) \wedge (y < 160) \wedge (dv = 0)$ & $(x < 380) \wedge (y < 160)$ \\ \hline
-		3 & $(380 ≤ x ≤ 690) \wedge (y > 780) \wedge (dv = 0)$ & $(380 ≤ x ≤ 690) \wedge (y > 780)$ \\ \hline
-		4 & $(380 ≤ x ≤ 690) \wedge (y < 160) \wedge (dv = 0)$ & $(380 ≤ x ≤ 690) \wedge (y < 160)$ \\ \hline
-		5 & $(x > 690) \wedge (y > 780) \wedge (dv = 0)$ & $(x > 690) \wedge (y > 780)$ \\ \hline
-		6 & $(x > 690) \wedge (y < 160) \wedge (dv = 0)$ & \begin{tabular}[c]{@{}c@{}}$(x > 690) \wedge (y < 160) \wedge $\\ $(og ≠ -2 \wedge og ≠ -1)$\end{tabular} \\ \hline
-	\end{tabular}
-\end{table}
+	\label{tab:summaryFromGearLever}  \\ % add \\ command to tell LaTeX to start a new line	
+	 
+	% Appear table header at the first page as well
+	\toprule[1.5pt]	
+	{\heiti 返回值} & {\heiti 实际的控制逻辑} & {\heiti 期望的控制逻辑} \\
+	\midrule[1pt]
+	\endfirsthead
+	
+	% Appear the table header at the top of every page
+	\multicolumn{3}{c}{续表~\thetable\hskip1em 根据代码\ref{code:gearLever}生成的函数摘要}\\
+	\toprule[1.5pt]	
+	{\heiti 返回值} & {\heiti 实际的控制逻辑} & {\heiti 期望的控制逻辑} \\
+	\midrule[1pt]
+	\endhead 
+	
+	% Appear \hline at the bottom of every page
+	\hline
+	\multicolumn{3}{r}{续下页}
+	\endfoot 
+	\endlastfoot
+	
+	% data begins here	
+	2 & - & \begin{tabular}[c]{@{}c@{}}$(x > 690) \wedge (y < 160) \wedge $\\ $(og = -2 ∨ og = -1) \wedge (dv ≠ 0)$\end{tabular} \\ 
+	-1 & dv ≠ 0 & $(160 ≤ y ≤ 780) \wedge (dv ≠ 0)$ \\ 
+	0 & $(160 ≤ y ≤ 780) \wedge (dv = 0)$ & $(160 ≤ y ≤ 780) \wedge (dv = 0)$ \\ 
+	1 & $(x < 380) \wedge (y > 780) \wedge (dv = 0)$ & $(x < 380) \wedge (y > 780)$ \\ 
+	2 & $(x < 380) \wedge (y < 160) \wedge (dv = 0)$ & $(x < 380) \wedge (y < 160)$ \\ 
+	3 & $(380 ≤ x ≤ 690) \wedge (y > 780) \wedge (dv = 0)$ & $(380 ≤ x ≤ 690) \wedge (y > 780)$ \\ 
+	4 & $(380 ≤ x ≤ 690) \wedge (y < 160) \wedge (dv = 0)$ & $(380 ≤ x ≤ 690) \wedge (y < 160)$ \\ 
+	5 & $(x > 690) \wedge (y > 780) \wedge (dv = 0)$ & $(x > 690) \wedge (y > 780)$ \\ 
+	6 & $(x > 690) \wedge (y < 160) \wedge (dv = 0)$ & \begin{tabular}[c]{@{}c@{}}$(x > 690) \wedge (y < 160) \wedge $\\ $(og ≠ -2 \wedge og ≠ -1)$\end{tabular} \\ 
+	% more data here
+	\bottomrule[1.5pt]
+\end{longtable}
+%
+%\begin{table}[htb]
+%	\centering
+%	\caption{根据代码\ref{code:gearLever}生成的函数摘要}
+%	\label{tab:summaryFromGearLeverxx}
+%	\begin{tabular}{|c|c|c|}
+%		\hline
+%		返回值 & 实际的控制逻辑 & 期望的控制逻辑 \\ \hline
+%		-2 & - & \begin{tabular}[c]{@{}c@{}}$(x > 690) \wedge (y < 160) \wedge $\\ $(og = -2 ∨ og = -1) \wedge (dv ≠ 0)$\end{tabular} \\ \hline
+%		-1 & dv ≠ 0 & $(160 ≤ y ≤ 780) \wedge (dv ≠ 0)$ \\ \hline
+%		0 & $(160 ≤ y ≤ 780) \wedge (dv = 0)$ & $(160 ≤ y ≤ 780) \wedge (dv = 0)$ \\ \hline
+%		1 & $(x < 380) \wedge (y > 780) \wedge (dv = 0)$ & $(x < 380) \wedge (y > 780)$ \\ \hline
+%		2 & $(x < 380) \wedge (y < 160) \wedge (dv = 0)$ & $(x < 380) \wedge (y < 160)$ \\ \hline
+%		3 & $(380 ≤ x ≤ 690) \wedge (y > 780) \wedge (dv = 0)$ & $(380 ≤ x ≤ 690) \wedge (y > 780)$ \\ \hline
+%		4 & $(380 ≤ x ≤ 690) \wedge (y < 160) \wedge (dv = 0)$ & $(380 ≤ x ≤ 690) \wedge (y < 160)$ \\ \hline
+%		5 & $(x > 690) \wedge (y > 780) \wedge (dv = 0)$ & $(x > 690) \wedge (y > 780)$ \\ \hline
+%		6 & $(x > 690) \wedge (y < 160) \wedge (dv = 0)$ & \begin{tabular}[c]{@{}c@{}}$(x > 690) \wedge (y < 160) \wedge $\\ $(og ≠ -2 \wedge og ≠ -1)$\end{tabular} \\ \hline
+%	\end{tabular}
+%\end{table}
 
 本章接下来的部分主要解释如何自动化实现以上过程。重点介绍值流图构建、语义分析、表达式分析等关键步骤。
 
@@ -200,39 +224,92 @@ int main() {
 
 其中，函数$ updateNodeValue::Node \rightarrow ValueSet $表示在迭代计算过程中每个节点的计算值，针对不同类型的节点，我们定义不同计算方法，具体计算方法如表\ref{tab:valueUpdate}所示。
 
-\begin{table}[htb]
-	\centering
+\begin{longtable}{cc}
 	\caption{各类节点的值的更新算法}
-	\label{tab:valueUpdate}
-	\begin{tabular}{|c|c|}
-		\hline
-		节点类型 & 更新值 \\ \hline
-		ConstNode & $ \left\{ \left( literalVal \left( cur \right), true \right) \right\} $ \\ \hline
-		StartNode & $ \left\{ \left( symbolicVal \left( cur \right), true \right) \right\} $ \\ \hline
-		CopyNode & $ \left\{ \left(updateNodeValue \left( cur.predecessor \right) \right) \right\} $ \\ \hline
-		OperatorNode &
-				$ \left\{ 
-					 		\left( 	\begin{array}{lr}	 		
-							 		operatorValue \\
-							 		\left( opr \left( cur \right), val \left( opd_1 \right), ..., val \left( opd_i \right) \right) \\
-							 		, cond \left( opd_1 \right) \wedge ... \wedge cond \left( opd_i \right) \\
-					 		\end{array} \right)  
-				 		\,\middle\vert\,
-				 				\begin{array}{c}
-				 						opd_i \in T \left( pre_i \right), \\
-				 						pre_i = pred \left( cur \right) \left[ i \right]  
-				 				\end{array}
-				\right\} $ \\ \hline
-		JoinNode (Loop) & 
-				$ \left\{ \left( \mu, true \right) 
-				\,\middle\vert\, 
-				\mu \gets \mu \cup val \left( pred \left( cur \right) \right) \right\} $ \\ \hline
-		JoinNode (Normal) & 
-				$ \left\{ \left( val \left( pre_i \right), cond \left( pre_i \right) \wedge pcond \left( pre_i \right) \right)
-				\,\middle\vert\, 
-				pre_i \gets pred_i \left( cur \right) \right\} $ \\ \hline
-	\end{tabular}
-\end{table}
+	\label{tab:valueUpdate}  \\ % add \\ command to tell LaTeX to start a new line	
+	
+	% Appear table header at the first page as well
+	\toprule[1.5pt]	
+	{\heiti 节点类型} & {\heiti 更新值}  \\
+	\midrule[1pt]
+	\endfirsthead
+	
+	% Appear the table header at the top of every page
+	\multicolumn{2}{c}{续表~\thetable\hskip1em 各类节点的值的更新算法}\\
+	\toprule[1.5pt]	
+	{\heiti 节点类型} & {\heiti 更新值}  \\
+	\midrule[1pt]
+	\endhead 
+	
+	% Appear \hline at the bottom of every page
+	\hline
+	\multicolumn{2}{r}{续下页}
+	\endfoot 
+	\endlastfoot
+	
+	% data begins here	
+	
+	ConstNode & $ \left\{ \left( literalVal \left( cur \right), true \right) \right\} $ \\ 
+	StartNode & $ \left\{ \left( symbolicVal \left( cur \right), true \right) \right\} $ \\
+	CopyNode & $ \left\{ \left(updateNodeValue \left( cur.predecessor \right) \right) \right\} $ \\ 
+	OperatorNode &
+			$ \left\{ 
+					\left( 	\begin{array}{lr}	 		
+							operatorValue \\
+							\left( opr \left( cur \right), val \left( opd_1 \right), ..., val \left( opd_i \right) \right) \\
+							, cond \left( opd_1 \right) \wedge ... \wedge cond \left( opd_i \right) \\
+					\end{array} \right)  
+			\,\middle\vert\,
+					\begin{array}{c}
+							opd_i \in T \left( pre_i \right), \\
+							pre_i = pred \left( cur \right) \left[ i \right]  
+					\end{array}
+			\right\} $ \\ 
+	JoinNode (Loop) & 
+			$ \left\{ \left( \mu, true \right) 
+			\,\middle\vert\, 
+			\mu \gets \mu \cup val \left( pred \left( cur \right) \right) \right\} $ \\ 
+	JoinNode (Normal) & 
+			$ \left\{ \left( val \left( pre_i \right), cond \left( pre_i \right) \wedge pcond \left( pre_i \right) \right)
+			\,\middle\vert\, 
+			pre_i \gets pred_i \left( cur \right) \right\} $ \\ 
+	% more data here
+	\bottomrule[1.5pt]
+\end{longtable}
+%
+%\begin{table}[htb]
+%	\centering
+%	\caption{各类节点的值的更新算法}
+%	\label{tab:valueUpdatexx}
+%	\begin{tabular}{|c|c|}
+%		\hline
+%		节点类型 & 更新值 \\ \hline
+%		ConstNode & $ \left\{ \left( literalVal \left( cur \right), true \right) \right\} $ \\ \hline
+%		StartNode & $ \left\{ \left( symbolicVal \left( cur \right), true \right) \right\} $ \\ \hline
+%		CopyNode & $ \left\{ \left(updateNodeValue \left( cur.predecessor \right) \right) \right\} $ \\ \hline
+%		OperatorNode &
+%				$ \left\{ 
+%					 		\left( 	\begin{array}{lr}	 		
+%							 		operatorValue \\
+%							 		\left( opr \left( cur \right), val \left( opd_1 \right), ..., val \left( opd_i \right) \right) \\
+%							 		, cond \left( opd_1 \right) \wedge ... \wedge cond \left( opd_i \right) \\
+%					 		\end{array} \right)  
+%				 		\,\middle\vert\,
+%				 				\begin{array}{c}
+%				 						opd_i \in T \left( pre_i \right), \\
+%				 						pre_i = pred \left( cur \right) \left[ i \right]  
+%				 				\end{array}
+%				\right\} $ \\ \hline
+%		JoinNode (Loop) & 
+%				$ \left\{ \left( \mu, true \right) 
+%				\,\middle\vert\, 
+%				\mu \gets \mu \cup val \left( pred \left( cur \right) \right) \right\} $ \\ \hline
+%		JoinNode (Normal) & 
+%				$ \left\{ \left( val \left( pre_i \right), cond \left( pre_i \right) \wedge pcond \left( pre_i \right) \right)
+%				\,\middle\vert\, 
+%				pre_i \gets pred_i \left( cur \right) \right\} $ \\ \hline
+%	\end{tabular}
+%\end{table}
 
 本算法属于值流图分析算法，定义了两个集合$ pending $和$ blockSet $，分别用于分别用于存储分析算法中待分析的节点和被阻塞的节点。
 
@@ -254,40 +331,87 @@ int main() {
 
 摘要清晰的描述了在不同分支路径条件下模块的输入与输出之间的对应关系，从而便于将软件实现与需求文档进行对比，进而提高程序理解与需求确认等工作的效率。另一方面，本算法是一种基于值流图的程序静态分析方法，因此在得到变量表达式关系的同时，可以在其上应用检查规则从而实现代码检查。典型的应用是检查每个节点在不同程序路径下的取值（表达式），判定程序是否存在如除零异常、空指针解引用、多重内存释放等缺陷，提高代码的正确率。
 
-\begin{table}[H]
-	\centering
+\begin{longtable}{cc}
 	\caption{值流图上部分节点的计算结果}
-	\label{tab:calculationResult}
-	\begin{tabular}{|c|c|}
-		\hline
-		$Node$ & $T(Node)$ \\ \hline
-		$ N_{4} $ & $ \left\{  \left( x, true \right) \right\} $ \\ \hline
-		$ N_{26} $ & $ \left\{  \left( 690, true \right) \right\} $ \\ \hline
-		$ N_{34} $ & $ \left\{  \left( x > 690, true \right) \right\} $ \\ \hline
-		$ N_{38} $ & $ \left\{  \left( 4, x ≤ 690 \right), \left( 6, x > 690 \right) \right\} $ \\ \hline
-		$ N_{41} $ & $ \left\{  \left( 1, x < 380 \right), \left( 3, 380 ≤ x ≤ 690 \right), \left( 5, x > 690 \right) \right\} $ \\ \hline
-		$ N_{42} $ & $ \left\{  
-				\begin{array}{c}
-						\left( 0, y ≤ 780 \right), \left( 1, x < 380 \wedge y > 780 \right) , \left( 3, 380 ≤ x ≤ 690 \wedge y > 780 \right) , \\
-						\left( 5, x > 690 \wedge y > 780 \right) 
-				\end{array}				
-		\right\} $ \\ \hline
-		$ N_{56} $ & $ \left\{  
-				\begin{array}{c}
-						\left( -1, dv ≠ 0 \right), \left( 0, 160 ≤ y ≤780 \wedge dv = 0 \right), \left( 1, x < 380 ∧ y > 780 \wedge dv = 0 \right),  \\
-						\left( 2, x < 380 \wedge y < 160 \wedge dv = 0 \right), \left( 3, 380 ≤ x ≤ 690 \wedge y > 780 \wedge dv = 0 \right),  \\
-						\left( 4, 380 ≤ x ≤ 690 \wedge y < 160 \wedge dv = 0 \right), \left( 5, x > 690 \wedge y > 780 \wedge dv = 0 \right), \\
-						\left( 6, x > 690 \wedge y < 160 \wedge dv = 0 \right),  \\
-				\end{array}
-		\right\} $ \\ \hline
-	\end{tabular}
-\end{table}
+	\label{tab:calculationResult}  \\ % add \\ command to tell LaTeX to start a new line	
+	 
+	% Appear table header at the first page as well
+	\toprule[1.5pt]	
+	{\heiti $Node$} & {\heiti $T(Node)$}  \\
+	\midrule[1pt]
+	\endfirsthead
+	
+	% Appear the table header at the top of every page
+	\multicolumn{2}{c}{续表~\thetable\hskip1em 值流图上部分节点的计算结果}\\
+	\toprule[1.5pt]	
+	{\heiti $Node$} & {\heiti $T(Node)$}  \\
+	\midrule[1pt]
+	\endhead 
+	
+	% Appear \hline at the bottom of every page
+	\hline
+	\multicolumn{2}{r}{续下页}
+	\endfoot 
+	\endlastfoot
+	
+	% data begins here	
+	$ N_{4} $ & $ \left\{  \left( x, true \right) \right\} $ \\ 
+	$ N_{26} $ & $ \left\{  \left( 690, true \right) \right\} $ \\ 
+	$ N_{34} $ & $ \left\{  \left( x > 690, true \right) \right\} $ \\ 
+	$ N_{38} $ & $ \left\{  \left( 4, x ≤ 690 \right), \left( 6, x > 690 \right) \right\} $ \\ 
+	$ N_{41} $ & $ \left\{  \left( 1, x < 380 \right), \left( 3, 380 ≤ x ≤ 690 \right), \left( 5, x > 690 \right) \right\} $ \\ 
+	$ N_{42} $ & $ \left\{  
+			\begin{array}{c}
+					\left( 0, y ≤ 780 \right), \left( 1, x < 380 \wedge y > 780 \right) , \left( 3, 380 ≤ x ≤ 690 \wedge y > 780 \right) , \\
+					\left( 5, x > 690 \wedge y > 780 \right) 
+			\end{array}				
+			\right\} $ \\ 
+	$ N_{56} $ & $ \left\{  
+			\begin{array}{c}
+					\left( -1, dv ≠ 0 \right), \left( 0, 160 ≤ y ≤780 \wedge dv = 0 \right), \left( 1, x < 380 ∧ y > 780 \wedge dv = 0 \right),  \\
+					\left( 2, x < 380 \wedge y < 160 \wedge dv = 0 \right), \left( 3, 380 ≤ x ≤ 690 \wedge y > 780 \wedge dv = 0 \right),  \\
+					\left( 4, 380 ≤ x ≤ 690 \wedge y < 160 \wedge dv = 0 \right), \left( 5, x > 690 \wedge y > 780 \wedge dv = 0 \right), \\
+					\left( 6, x > 690 \wedge y < 160 \wedge dv = 0 \right),  \\
+			\end{array}
+			\right\} $ \\ 
+	% more data here
+	\bottomrule[1.5pt]
+\end{longtable}
+
+%\begin{table}[H]
+%	\centering
+%	\caption{值流图上部分节点的计算结果}
+%	\label{tab:calculationResultxx}
+%	\begin{tabular}{|c|c|}
+%		\hline
+%		$Node$ & $T(Node)$ \\ \hline
+%		$ N_{4} $ & $ \left\{  \left( x, true \right) \right\} $ \\ \hline
+%		$ N_{26} $ & $ \left\{  \left( 690, true \right) \right\} $ \\ \hline
+%		$ N_{34} $ & $ \left\{  \left( x > 690, true \right) \right\} $ \\ \hline
+%		$ N_{38} $ & $ \left\{  \left( 4, x ≤ 690 \right), \left( 6, x > 690 \right) \right\} $ \\ \hline
+%		$ N_{41} $ & $ \left\{  \left( 1, x < 380 \right), \left( 3, 380 ≤ x ≤ 690 \right), \left( 5, x > 690 \right) \right\} $ \\ \hline
+%		$ N_{42} $ & $ \left\{  
+%				\begin{array}{c}
+%						\left( 0, y ≤ 780 \right), \left( 1, x < 380 \wedge y > 780 \right) , \left( 3, 380 ≤ x ≤ 690 \wedge y > 780 \right) , \\
+%						\left( 5, x > 690 \wedge y > 780 \right) 
+%				\end{array}				
+%		\right\} $ \\ \hline
+%		$ N_{56} $ & $ \left\{  
+%				\begin{array}{c}
+%						\left( -1, dv ≠ 0 \right), \left( 0, 160 ≤ y ≤780 \wedge dv = 0 \right), \left( 1, x < 380 ∧ y > 780 \wedge dv = 0 \right),  \\
+%						\left( 2, x < 380 \wedge y < 160 \wedge dv = 0 \right), \left( 3, 380 ≤ x ≤ 690 \wedge y > 780 \wedge dv = 0 \right),  \\
+%						\left( 4, 380 ≤ x ≤ 690 \wedge y < 160 \wedge dv = 0 \right), \left( 5, x > 690 \wedge y > 780 \wedge dv = 0 \right), \\
+%						\left( 6, x > 690 \wedge y < 160 \wedge dv = 0 \right),  \\
+%				\end{array}
+%		\right\} $ \\ \hline
+%	\end{tabular}
+%\end{table}
 
 \section{评估与结果}
 
 \subsection{实验设计}
 
-虑到根据源代码生成精确值流图的过程十分复杂，本算法的实现基于Tsmart静态分析框架，它的优点是使用静态分析的方法，高效的生成控制流自动机和精确值流图。同时该分析框架具有可配置性，能够较容易的获取到所需程序上下文信息，因此我们采用此分析框架，工具的开发语言为Java，工具的框架图如图\ref{fig:架构图}所示：
+虑到根据源代码生成精确值流图的过程十分复杂，本算法的实现基于Tsmart静态分析框架，它的优点是使用静态分析的方法，高效的生成控制流自动机和精确值流图。同时该分析框架具有可配置性，能够较容易的获取到所需程序上下文信息，因此我们采用此分析框架，工具的开发语言为Java，工具的框架图如图\ref{fig:架构图}所示。
 
 本节从客观、主观两个方面评估论文算法（工具）在程序理解与需求确认方面的效用。客观评价重点关注算法的完整性与准确性。具体而言，我们考察算法自动生成的摘要质量；主观评价则重点关注工具在具体的生产环境中的可用性与实用性。我们将分别从客观评价和主观评价两个方面对工具进行实验。
 
@@ -301,24 +425,58 @@ int main() {
 \subsection{客观评价}
 
 客观评价方法主要包含以下几个步骤：（1）分别选取数学计算、计算机应用、工业领域和嵌入式领域中8个具有代表性的代码片段作为实验对象（详见表\ref{tab:selectedCodes}）；（2）采用本文工具分别生成相应的函数摘要；（3）判定工具自动生成的摘要与实际需求的差距。
-
-\begin{table}[htb]
-	\centering
+\begin{longtable}{ccc}
 	\caption{选取的各类代码}
-	\label{tab:selectedCodes}
-	\begin{tabular}{|c|c|c|}
-		\hline
-		类别 & 选取代码 & 文件名称 \\ \hline
-		\multirow{2}{*}{数学计算} & 三角形判定 & triangle.c \\ \cline{2-3} 
-		& 绝对值计算 & abs.c \\ \hline
-		\multirow{2}{*}{计算机应用} & （加权平均）滤波算法 & filter.c \\ \cline{2-3} 
-		& 校验和算法 & checksum.c \\ \hline
-		\multirow{2}{*}{工业领域} & 车辆控制系统某算法 & CDL\_ARC429.c \\ \cline{2-3} 
-		& 航天发动机控制系统某算法 & ISP\_TOOL.c \\ \hline
-		\multirow{2}{*}{嵌入式领域} & 含goto语句的程序片段 & msp430-decode.c \\ \cline{2-3} 
-		& 带函数指针的程序片段 & xen-ops.c \\ \hline
-	\end{tabular}
-\end{table}
+	\label{tab:selectedCodes}  \\ % add \\ command to tell LaTeX to start a new line	
+	 
+	% Appear table header at the first page as well
+	\toprule[1.5pt]	
+	{\heiti 类别} & {\heiti 选取代码}  & {\heiti 文件名称}  \\
+	\midrule[1pt]
+	\endfirsthead
+	
+	% Appear the table header at the top of every page
+	\multicolumn{3}{c}{续表~\thetable\hskip1em 选取的各类代码}\\
+	\toprule[1.5pt]	
+	{\heiti 类别} & {\heiti 选取代码}  & {\heiti 文件名称}  \\
+	\midrule[1pt]
+	\endhead 
+	
+	% Appear \hline at the bottom of every page
+	\hline
+	\multicolumn{3}{r}{续下页}
+	\endfoot 
+	\endlastfoot
+	
+	% data begins here	
+	\multirow{2}{*}{数学计算} & 三角形判定 & triangle.c \\ 
+	& 绝对值计算 & abs.c \\ 
+	\multirow{2}{*}{计算机应用} & （加权平均）滤波算法 & filter.c \\ 
+	& 校验和算法 & checksum.c \\ 
+	\multirow{2}{*}{工业领域} & 车辆控制系统某算法 & CDL\_ARC429.c \\ 
+	& 航天发动机控制系统某算法 & ISP\_TOOL.c \\
+	\multirow{2}{*}{嵌入式领域} & 含goto语句的程序片段 & msp430-decode.c \\
+	& 带函数指针的程序片段 & xen-ops.c \\ 
+	% more data here
+	\bottomrule[1.5pt]
+\end{longtable}
+%\begin{table}[htb]
+%	\centering
+%	\caption{选取的各类代码}
+%	\label{tab:selectedCodesxx}
+%	\begin{tabular}{|c|c|c|}
+%		\hline
+%		类别 & 选取代码 & 文件名称 \\ \hline
+%		\multirow{2}{*}{数学计算} & 三角形判定 & triangle.c \\ \cline{2-3} 
+%		& 绝对值计算 & abs.c \\ \hline
+%		\multirow{2}{*}{计算机应用} & （加权平均）滤波算法 & filter.c \\ \cline{2-3} 
+%		& 校验和算法 & checksum.c \\ \hline
+%		\multirow{2}{*}{工业领域} & 车辆控制系统某算法 & CDL\_ARC429.c \\ \cline{2-3} 
+%		& 航天发动机控制系统某算法 & ISP\_TOOL.c \\ \hline
+%		\multirow{2}{*}{嵌入式领域} & 含goto语句的程序片段 & msp430-decode.c \\ \cline{2-3} 
+%		& 带函数指针的程序片段 & xen-ops.c \\ \hline
+%	\end{tabular}
+%\end{table}
 
 由于摘要结果和程序的条件分支有关，因此本文分别对比两者在每个条件分支下的生成结果。同时，记录工具的时间和空间开销，包括摘要生成时间、占用内存大小以及生成的VFG大小，如表\ref{tab:summaryComparision}所示。
 
@@ -353,38 +511,103 @@ int main() {
 
 通过实验可知，本工具可显著提高用户对代码的理解效率，能够帮助用户快速抽取程序语义并进行需求确认。同时，随着代码分支复杂度的提升，使用工具进行程序理解与需求确认的优势将越来越大。
 
-\begin{table}[htb]
-	\centering
+\begin{longtable}{ccccc}
 	\caption{各组对每类代码理解并作答所用时间}
-	\label{tab:ComprehensionComparision}
-	\begin{tabular}{|c|c|c|c|c|}
-		\hline
-		程序代码 & 源码组T1/s & 源码组T2/s & 摘要组T1/s & 摘要组T2/s \\ \hline
-		三角形判定 & 45 & 32 & 37 & 14 \\ \hline
-		绝对值 & 5 & 13 & 11 & 14 \\ \hline
-		滤波算法 & 61 & 15 & 27 & 15 \\ \hline
-		校验和算法 & 97 & 43 & 54 & 38 \\ \hline
-		车辆控制系统 & 294 & 86 & 103 & 74 \\ \hline
-		航发控制系统 & 318 & 92 & 114 & 91 \\ \hline
-		Goto语句 & 195 & 48 & 64 & 31 \\ \hline
-		函数指针 & 82 & 33 & 40 & 29 \\ \hline
-	\end{tabular}
-\end{table}
+	\label{tab:ComprehensionComparision}  \\ % add \\ command to tell LaTeX to start a new line	
+
+	% Appear table header at the first page as well
+	\toprule[1.5pt]	
+	{\heiti 程序代码} & {\heiti 源码组T1/s}  & {\heiti 源码组T2/s}  & {\heiti 摘要组T1/s}  & {\heiti 摘要组T2/s}    \\
+	\midrule[1pt]
+	\endfirsthead
+	
+	% Appear the table header at the top of every page
+	\multicolumn{5}{c}{续表~\thetable\hskip1em 选取的各类代码}\\
+	\toprule[1.5pt]	
+	{\heiti 程序代码} & {\heiti 源码组T1/s}  & {\heiti 源码组T2/s} & {\heiti 摘要组T1/s}   & {\heiti 摘要组T2/s}    \\
+	\midrule[1pt]
+	\endhead 
+	
+	% Appear \hline at the bottom of every page
+	\hline
+	\multicolumn{5}{r}{续下页}
+	\endfoot 
+	\endlastfoot
+	
+	% data begins here	
+	三角形判定 & 45 & 32 & 37 & 14 \\ 
+	绝对值 & 5 & 13 & 11 & 14 \\ 
+	滤波算法 & 61 & 15 & 27 & 15 \\ 
+	校验和算法 & 97 & 43 & 54 & 38 \\ 
+	车辆控制系统 & 294 & 86 & 103 & 74 \\ 
+	航发控制系统 & 318 & 92 & 114 & 91 \\ 
+	Goto语句 & 195 & 48 & 64 & 31 \\ 
+	函数指针 & 82 & 33 & 40 & 29 \\ 
+	% more data here
+	\bottomrule[1.5pt]
+\end{longtable}
+%\begin{table}[htb]
+%	\centering
+%	\caption{各组对每类代码理解并作答所用时间}
+%	\label{tab:ComprehensionComparisionxx}
+%	\begin{tabular}{|c|c|c|c|c|}
+%		\hline
+%		程序代码 & 源码组T1/s & 源码组T2/s & 摘要组T1/s & 摘要组T2/s \\ \hline
+%		三角形判定 & 45 & 32 & 37 & 14 \\ \hline
+%		绝对值 & 5 & 13 & 11 & 14 \\ \hline
+%		滤波算法 & 61 & 15 & 27 & 15 \\ \hline
+%		校验和算法 & 97 & 43 & 54 & 38 \\ \hline
+%		车辆控制系统 & 294 & 86 & 103 & 74 \\ \hline
+%		航发控制系统 & 318 & 92 & 114 & 91 \\ \hline
+%		Goto语句 & 195 & 48 & 64 & 31 \\ \hline
+%		函数指针 & 82 & 33 & 40 & 29 \\ \hline
+%	\end{tabular}
+%\end{table}
 
 在实验步骤5中，我们设计了数道问题，交予参与实验的同学回答并统计，最终得到的结果如表\ref{tab:questionaire}。实验参与者对自动生成摘要工具总体持肯定态度，认为生成的摘要对理解代码有帮助。对于摘要是否可以帮助分析变更影响范围与帮助软件维护方面，一部分同学持观望和怀疑态度，认为本工具生成的摘要为函数级别的摘要，而变更影响范围分析与软件维护可能涉及全局代码，需要结合函数调用等信息进一步分析。
 
-\begin{table}[htb]
-	\centering
+\begin{longtable}{cccc}
 	\caption{问卷设计与答复情况}
-	\label{tab:questionaire}
-	\begin{tabular}{|c|c|c|c|}
-		\hline
-		问题设计 & 赞同人数 & 否定人数 & 其他想法 \\ \hline
-		摘要是否有助于你理解代码？ & 28 & 2 & 0 \\ \hline
-		你认为摘要是否对影响范围分析有帮助？ & 25 & 4 & 1 \\ \hline
-		你认为摘要是否对软件维护有帮助？ & 22 & 7 & 1 \\ \hline
-	\end{tabular}
-\end{table}
+	\label{tab:questionaire}  \\ % add \\ command to tell LaTeX to start a new line	
+	
+	% Appear table header at the first page as well
+	\toprule[1.5pt]	
+	{\heiti 问题设计} & {\heiti 赞同人数}  & {\heiti 否定人数}  & {\heiti 其他想法}  \\
+	\midrule[1pt]
+	\endfirsthead
+	
+	% Appear the table header at the top of every page
+	\multicolumn{4}{c}{续表~\thetable\hskip1em 问卷设计与答复情况}\\
+	\toprule[1.5pt]	
+	{\heiti 问题设计} & {\heiti 赞同人数}  & {\heiti 否定人数}  & {\heiti 其他想法}  \\
+	\midrule[1pt]
+	\endhead 
+	
+	% Appear \hline at the bottom of every page
+	\hline
+	\multicolumn{4}{r}{续下页}
+	\endfoot 
+	\endlastfoot
+	
+	% data begins here	
+	摘要是否有助于你理解代码？ & 28 & 2 & 0 \\
+	你认为摘要是否对影响范围分析有帮助？ & 25 & 4 & 1 \\ 
+	你认为摘要是否对软件维护有帮助？ & 22 & 7 & 1 \\ 
+	% more data here
+	\bottomrule[1.5pt]
+\end{longtable}
+%\begin{table}[htb]
+%	\centering
+%	\caption{问卷设计与答复情况}
+%	\label{tab:questionairexx}
+%	\begin{tabular}{|c|c|c|c|}
+%		\hline
+%		问题设计 & 赞同人数 & 否定人数 & 其他想法 \\ \hline
+%		摘要是否有助于你理解代码？ & 28 & 2 & 0 \\ \hline
+%		你认为摘要是否对影响范围分析有帮助？ & 25 & 4 & 1 \\ \hline
+%		你认为摘要是否对软件维护有帮助？ & 22 & 7 & 1 \\ \hline
+%	\end{tabular}
+%\end{table}
 
 \section{后续工作与总结}
 
