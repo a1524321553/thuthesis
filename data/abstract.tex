@@ -4,22 +4,27 @@
 
 \begin{abstract}
 
-文章主要围绕Range那一套，写传统的静态分析方法
+在软件开发、测试、验证与维护工作中，软件的验证与确认是十分重要的步骤。前者关注于软件是否如软件定义般实现，后者关注于软件是否符合预期的需求。但在实际应用过程中，两者均会面临重大的挑战：开发人员不可避免的会因为疏忽而在软件中引入缺陷，这些缺陷如不及时发现并修正，将会造成巨大的损失；另一方面，软件确认工作也面临着较大困难：要判断软件是否符合预期的需求，实际上是要判断软件实现与软件需求是否匹配。然而两者的描述方式是不同的，前者是具有复杂逻辑结构的代码，后者则是抽象的文字描述，相差较大。对此，如何提高工作人员理解程序代码的效率成了重要问题。
 
-目的：整型缺陷分析：overflow, underflow, divide by zero
+本文依照上述问题，试图从程序的整形缺陷检测与整型变量关系分析两个方面入手，在一定范围内解决上述问题。本文的工作内容如下：（1）针对当前线性区间抽象域由于表示能力不足而造成的程序分析精度损失的问题，提出了
+基于符号敏感的区间算数的整型缺陷检测方法。具体地，本文依次设计了线性区间、线性多区间以及符号敏感的线性多区间理论域与计算规则，能够较好的表示整型变量的可能取值范围；其次，为了实现程序的语义表示，本文设计了区间抽象域来描述程序的每个状态，并通过设计变迁规则，模拟程序状态的变迁，从而实现程序语义；最后通过设计缺陷检测规则实现程序的整形缺陷检测。（2）为了解决软件确认过程中因程序理解造成的低效问题，提出基于值流图的整型变量关系分析与缺陷检测方法。具体地，介绍了精确值流图的定义与构造，并在此基础上设计了程序语义的抽取方法，包括抽象域的设计、变迁规则的设计和表达式分析算法的设计。使用算法，可以对程序中的整型变量在不同程序路径下的取值关系进行语义抽取，并生成模块摘要。（3）基于上述两个研究工作所提出的解决方案，在Tsmart静态分析框架中进行编码实现，并通过实验验证了其正确性与实用性。
 
-量化：Juliet、找一些工程
-
+经过实验，本文提出的基于区间算数的整形缺陷方法在Juliet测试集上可达到0\%的漏报率与低于3\%的漏报率；本文提出的基于值流图的整型变量关系分析与缺陷检测方法能够在选用的程序代码上正确的生成程序摘要，并可有效提升程序理解效率，具有良好的应用价值。
  
  \thusetup{
-	keywords = {},
+	keywords = {软件验证与确认, 缺陷检测, 程序理解, 静态分析},
 }
 \end{abstract}
 
 \begin{abstract*}
 
+In software development, testing, verification and maintenance, software verification and validation is a very important step. The former focuses on whether the software is implemented as software definition, while the latter focuses on whether the software meets the expected requirements. However, in the practical application process, both of them will face major challenges: developers will inevitably introduce defects into the software due to negligence, and if these defects are not found and corrected in time, it will cause huge losses; on the other hand, the software confirmation work also faces great difficulties: to judge whether the software meets the expected needs, in fact, it is to judge the software implementation Match with software requirements. However, the description of the two is different. The former is code with complex logical structure, while the latter is abstract text description, which is quite different. In this regard, how to improve the efficiency of staff to understand the program code has become an important issue.
+
+According to the above problems, this paper attempts to solve the above problems in a certain range from two aspects of the program's plastic defect detection and integer variable relationship analysis. The work of this paper is as follows: (1) aiming at the problem of the loss of program analysis accuracy caused by the lack of representation ability in the current linear interval abstract domain, an integer defect detection method based on symbol sensitive interval arithmetic is proposed. Specifically, this paper designs the linear interval, linear interval and symbol sensitive linear interval theory domain and calculation rules in turn, which can better represent the possible value range of integer variables; secondly, in order to realize the semantic representation of the program, this paper designs the interval abstract domain to describe each state of the program, and simulates the change of the program state by designing the change rules Finally, through the design of defect detection rules to achieve the plastic defect detection of the program. (2) In order to solve the problem of low efficiency caused by program understanding in the process of software validation, an integer variable relationship analysis and defect detection method based on value flow graph is proposed. Specifically, this paper introduces the definition and construction of the precise value flow graph, and designs the extraction method of program semantics, including the design of abstract domain, the design of transition rules and the design of expression analysis algorithm. Using the algorithm, we can extract the value relationship of integer variables in different program paths and generate module summary. (3) Based on the solutions proposed by the above two research works, the coding is implemented in the tsmart static analysis framework, and its correctness and practicability are verified by experiments.
+
+Through experiments, the algorithm based on interval arithmetic can achieve 0\% and less than 3\% in Juliet test set; the algorithm based on value flow graph can generate program summary correctly in the selected program code, and can effectively improve the efficiency of program understanding, which has good application value.
 
   \thusetup{
-    keywords* = {},
+    keywords* = {Software verification and validation, defect detection, program understanding, static analysis},
   }
 \end{abstract*}
