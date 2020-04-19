@@ -1,10 +1,13 @@
 % !TeX root = ../main.tex
 
 \chapter{基于区间算数的整数缺陷检测}
+\label{sec:区间算数}
 
 本章介绍基于区间算数的整数缺陷检测技术。旨在通过设计线性区间理论域，得到程序中整型变量的抽象表示，通过设计并借助变迁函数来模拟程序指令在抽象表示上的作用，实现程序的行为分析。在此基础上实现程序中数值导向型缺陷检测。
 
-本章的结构安排如下：\ref{sec:区间算数引言}小节通过一个区间分析的案例，介绍了当前基于区间分析的精度是不足的，引出本章研究内容；\ref{sec:区间算数预备知识}小节介绍本章研究内容所需的预备知识，包括控制流自动机的概念与定义和可配置静态分析框架的概念；\ref{sec:区间算数抽象域设计}小节依照层次结构分别介绍了具体的线性区间理论域的设计，并介绍抽象域上的变迁函数；\ref{sec:区间算数缺陷检测方法}小节利用设计的抽象域与变迁规则，实现程序的整形缺陷检测方法；最后于\ref{sec:区间算数模块实现}和\ref{sec:区间算数实验与结果}两个小节分别介绍了本章所述方法的工具实现并通过实验验证了工具的有效性。
+本章的结构安排如下：\ref{sec:区间算数引言}小节通过一个区间分析的案例，介绍了当前基于区间分析存在的精度不足问题，引出本章研究内容；\ref{sec:区间算数预备知识}小节介绍本章研究内容所需的预备知识，包括控制流自动机的概念与定义和可配置静态分析框架的概念；\ref{sec:区间算数抽象域设计}小节依照层次结构分别介绍了具体的线性区间理论域的设计，并介绍抽象域上的变迁函数；最后，本章\ref{sec:区间算数缺陷检测方法}小节利用设计的抽象域与变迁规则，给出程序的整型缺陷检测方法。我们于\ref{sec:WrappedRange}小节通过具体例子介绍环状区间，并以此展开，介绍未来可能的研究方向。
+
+%最后于\ref{sec:区间算数模块实现}和\ref{sec:区间算数评估与结果}两个小节分别介绍了本章所述方法的工具实现并通过实验验证了工具的有效性。
 
 \section{引言}
 \label{sec:区间算数引言}
@@ -81,6 +84,36 @@ int funcB(int i) {
 %	\item 函数调用边与函数返回边（FunctionCallEdge, FunctionReturnEdge）：
 \end{itemize}
 
+为了便于后续算法介绍，我们对LLVM-IR中几种常见的指令做说明，现将其表示形式列举如下：
+\begin{itemize}	
+	\item Phi指令：$ z = \mathsf{phi}~[y_1, x_1]~ [y_2, x_2] \dots $。Phi指令通常具有多个输入$ [y_i, x_i] $，其中，$ y_i $表示可能的取值，$ x_i $用于表示取值条件，当程序的执行经过$ x_i $时，$ \mathsf{phi} $指令的取值对应为$ y_i $。
+	
+	\item Alloca指令：$ x = \mathsf{alloca}~type $。Alloca指令用于为变量$ x $申请一个能够存储类型为$ type $的内存区域，并将申请得到的内存地址返回给变量$ x $。
+	
+	\item 二元运算指令：$ x = y \cdot_{op} z $，$ \cdot_{op} \in \{+, -, \times, \div, and, or, xor, <<, >>\} $。二元运算指令用于对整型变量$ y, z $进行运算，并将计算结果赋值给$ x $。
+	
+	\item Cast指令：$ x = \mathsf{cast}~ y~ \mathsf{to}~type $。Cast指令用于将一个整型变量转化为类型为$ type $的整型变量。通常使用它转换整型变量的位宽。
+	
+	
+	\item Cmp指令：$ x = \mathsf{cmp~pre}  ~y, z$。Cmp指令用于根据条件$ \mathsf{pre} $判定变量$ y $与$ z $的关系，并将比较结果返回给$ x $。判断条件$ \mathsf{pre} $通常有如下几种：
+		\begin{itemize}
+			\item eq: 判断$ y $与$ z $相等；
+			\item ne: 判断$ y $与$ z $不相等；
+			\item ugt: 无符号比较$ y > z $；
+			\item uge: 无符号比较$ y \ge z $；
+			\item ult: 无符号比较$ y < z $；
+			\item ule: 无符号比较$ y \le z $；
+			\item sgt: 有符号比较$ y > z $；
+			\item sge: 有符号比较$ y \ge z $；
+			\item slt: 有符号比较$ y < z $；
+			\item sle: 有符号比较$ y \le z $。
+		\end{itemize}
+	
+	\item Load指令：$ x = \mathsf{load} ~type ~y $。Load指令用于从$ y $所指向的内存区域中取类型为$ type $的数值，并将结果存放于变量$ x $中。
+	
+	\item Store指令：$ \mathsf{store}  ~type ~x, y $。Store指令用于将类型为$ type $的数值$ y $存放于由$ x $所指向的内存区域中。
+\end{itemize}
+
 为了便于描述，定义函数$ type $用于获取边的类型：
 \begin{align}{\label{align:edgeType}}
 	type(e) := \begin{cases}
@@ -152,7 +185,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 	\label{fig:Domains}
 \end{figure}
 
-\subsection{扩展的整数（RangeInteger）理论域}
+\subsection{扩展的整数理论域}
 \label{sec:Integer}
 
 整型变量的可能取值是一个整数的集合，在这里我们使用扩展的整数RangeInteger来表示一个具体的整数，它是整数域$ \mathbf{Z} $的一个拓展。
@@ -279,7 +312,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 	\bottomrule[1.5pt]
 \end{longtable}
 
-\subsection{线性区间（Range）理论域}
+\subsection{线性区间理论域}
 \label{sec:Range}
 
 线性区间Range一个整数区间，表示整型变量的可能取值范围，它是由两个整数$ x, y $构成的二元组。这里，$ x, y $为扩展的整数域RangeInteger上的元素，其定义与偏序关系定义如下。
@@ -456,12 +489,12 @@ Range是可比较的，对于$ a = [x_1, y_1], b = [x_2, y_2] \in D_R $，有：
 	a > b \iff x_1 > y_2
 \end{align}
 
-\subsection{线性多区间（MultiRange）理论域}
+\subsection{线性多区间理论域}
 \label{sec:MultiRange}
 
 通过分析图\ref{fig:codeExampleForSignRange}所示的代码案例，易知在整型变量分析时，使用单独的线性区间Range会造成一定程度的精度损失，这时需要提供一个更为精确的理论域来对整型变量的取值范围做抽象。
 
-本小节介绍线性多区间MultiRange，它是由0到$ L_{MR} $个Range构成的有序的区间列表，通过使用多个Range区间，MultiRange能够提供更贴近实际域的变量取值区间表示。当$ L_{MR}  \rightarrow \infty $时，MultiRange能够精确表示整型变量的每一个可能取值，其表示能力和RangeInteger相同；当$ L_{MR} = 1 $时，MultiRange退化为Range。
+本小节介绍线性多区间MultiRange，它是由0到$ L_{MR} $个Range构成的有序的区间列表，通过使用多个Range区间，MultiRange能够提供更贴近实际域的变量取值区间表示。当$ L_{MR}  \rightarrow \infty $时，MultiRange能够精确表示整型变量的每一个可能取值，其表示能力和RangeInteger相同；当$ L_{MR} = 1 $时，MultiRange的表示能力与Range相同。
 
 在实际应用中，由于MultiRange可以根据需要通过改变$ L_{MR} $值的大小灵活改变理论域的表示精度，从而可以十分灵活的针对不同情况，优化程序分析的分析效率与分析精度。
 
@@ -614,7 +647,7 @@ MultiRange是可比较的，对于$ a = [a_1, \dots, a_m], b = [b_1, \dots, b_n]
 	对于$ mr = [[1, 10], [20, 30]] $，有$ mr.join([5, 25]) = [[5, 10], [20, 25]] $。
 \end{itemize}
 
-\subsection{位敏感的线性区间（SignRange）理论域}
+\subsection{位敏感的线性区间理论域}
 \label{sec:SignRange}
 
 在前面介绍的RangeInteger、Range与MultiRange抽象表示均未考虑整型变量在计算机上的存储格式，即对变量在计算机中所占用字节的大小是不敏感（Bitwidth Sensitive）的。当程序分析需要考虑变量的字节大小时，这类抽象表示往往不能提供整型变量实际所能表示的整数范围。
@@ -637,7 +670,7 @@ MultiRange是可比较的，对于$ a = [a_1, \dots, a_m], b = [b_1, \dots, b_n]
 	\end{itemize}
 \end{definition}
 
-引入符号性理论域意味着一个整形变量取值范围会随着符号性的不同而映射为不同的SignRange，尽管其在计算机内的存储内容是相同的（解释方式不同）。由于程序的这一特点，定义函数$ |_{to}(s), s \in D_{sgn} $用于转化同一整数取值范围的不同SignRange表示，其算法在后续给出。方便起见，可将$ Signed, Unsigned, Unknown $分别记为$ S, U, N $。在此之前，先定义位敏感的线性区间SignRange的理论域：
+引入符号性理论域意味着一个整型变量取值范围会随着符号性的不同而映射为不同的SignRange，尽管其在计算机内的存储内容是相同的（解释方式不同）。由于程序的这一特点，定义函数$ |_{to}(s), s \in D_{sgn} $用于转化同一整数取值范围的不同SignRange表示，其算法在后续给出。方便起见，可将$ Signed, Unsigned, Unknown $分别记为$ S, U, N $。在此之前，先定义位敏感的线性区间SignRange的理论域：
 
 \begin{definition}
 	位敏感的线性区间理论域	$ D_{SR} := \{(r, w,  s) \, | \,  r \in D_{MR}, w \in \mathbf{Z^+}, s \in \{Signed, Unsigned, Unknown\}\} $是一个半格：
@@ -656,10 +689,10 @@ MultiRange是可比较的，对于$ a = [a_1, \dots, a_m], b = [b_1, \dots, b_n]
 	\end{itemize}
 \end{definition}
 
-上述定义中，函数$ \mathsf{s}(sr), sr \in D_{SR}$为取$ sr $的Signedness值。类似的，有$ \mathsf{w}(sr), sr \in D_{SR} $用于取$ sr $的Bitwidth值；$ \mathsf{r}(sr), sr \in D_{SR} $用于取$ sr $的MultiRange值。
+上述定义中，函数$ \mathsf{s}(sr), sr \in D_{SR}$用于取位敏感线性区间$ sr $的Signedness值。类似的，有$ \mathsf{w}(sr), sr \in D_{SR} $用于取区间$ sr $的Bitwidth值；$ \mathsf{r}(sr), sr \in D_{SR} $用于取区间$ sr $的MultiRange值。
 
 
-值得注意的是，$ \mathsf{r}(\top_{SR}) := \top_{MR} $。这意味着在SignRange中MultiRange的实际可取值范围比计算机表示范围大，这一特性将用于程序分析判定整形变量是否产生整形溢出。为了表示在计算机上固定位宽的整型变量的实际取值范围，定义函数$ top(sr), sr \in D_{SR} $和函数$ top(w, s), w \in \mathbf{Z^+}, s \in D_{sgn} $用于计算在特定位宽下的整型变量以特定符号性解释的取值范围：
+值得注意的是，$ \mathsf{r}(\top_{SR}) := \top_{MR} $。这意味着在SignRange中MultiRange的实际可取值范围比计算机表示范围大，这一特性将用于程序分析判定整型变量是否产生整型溢出。为了表示在计算机上固定位宽的整型变量的实际取值范围，定义函数$ top(sr), sr \in D_{SR} $和函数$ top(w, s), w \in \mathbf{Z^+}, s \in D_{sgn} $用于计算在特定位宽下的整型变量以特定符号性解释的取值范围：
 \begin{align}
 	top(sr)  = top(w, s):=  \begin{cases}
 		[0, 2^{w} - 1]_{R} & s = U\\
@@ -844,7 +877,7 @@ SignRange是可比较的，对于$ a, b \in D_{SR} $，有：\begin{align}
 
 为了后续方便，在SignRange上定义函数$ high $用于获取当前线性区间中的最大值，函数$ low $用于获取当前线性区间中的最小值。对于$ sr = ([[1, 5], [20, 100]],8,\\ S) \in D_{SR} $，有$ high(sr) = 100, low(sr) = 1 $。
 
-\subsection{区间状态（RangeState）理论域}
+\subsection{区间状态理论域}
 \label{sec:RangeState}
 
 通过上一小节的分析，使用位敏感的线性区间SignRange可以对整型变量的取值范围做精确的抽象表示和计算模拟，本节介绍的区间状态RangeState则是对控制流自动机（CFA）中所表示的程序状态的精确抽象，它描述了CFA上某程序状态下各个整型变量的取值范围。
@@ -875,7 +908,7 @@ SignRange是可比较的，对于$ a, b \in D_{SR} $，有：\begin{align}
 
 在定义区间状态理论域上的变迁关系后，我们可以使用区间状态$ \Gamma $和区间状态上的变迁关系$ \rightsquigarrow_S $来抽象描述CFA上程序状态和程序状态之间的变迁关系。由于CFA上对应的边$ e \in E $所表示的指令类型的不同（见公式\ref{align:edgeType}），$ \rightsquigarrow_S $对应的变迁函数$ \Upsilon := act(\rightsquigarrow_S) $随之有不同的定义（下列定义中为方便起见，整型变量的AccessPath均由其在指令中的变量名代替）：
 
-\begin{enumerate}[（1）]
+\begin{enumerate}
 
 \item 对于空白边$ e \in BlankEdge $，$ act(e) = \varepsilon $，其变迁关系为：
 \begin{align}
@@ -905,7 +938,7 @@ SignRange是可比较的，对于$ a, b \in D_{SR} $，有：\begin{align}
 
 在上式中，当$ S_1(x_1) = 0 $时，$ Y := 	S_1(y_1) $ 当 $ S_1(x_2) = 0 $时，$ Y :=  S_1(y_2) $。
 
-\item 对于形如$ x = \mathbf{alloca}  ~type $这样的指令边（InstructionEdge），约定$ w $为$ type $类型变量在计算机上存储所用位宽，$ s $为$ type $类型变量的符号性，则变迁关系为：
+\item 对于形如$ x = \mathbf{alloca}  ~type $这样的指令边（InstructionEdge），约定$ w $为$ type $类型变量在计算机上存储所用位宽，$ s $为$ type $类型变量的符号性，则变迁关系可描述为：
 \begin{align}
 	\frac{n_1 \xrightarrow{x = \mathbf{alloca}  ~type} n_2, 
 		S_2 = S_1[*x ~/~ (\top_{MR}, w, s) ]}
@@ -1016,7 +1049,7 @@ SignRange是可比较的，对于$ a, b \in D_{SR} $，有：\begin{align}
 	% Appear the table header at the top of every page
 	\multicolumn{3}{c}{续表~\thetable\hskip1em CWE定义的数值导向型缺陷}\\
 	\toprule[1.5pt]	
-	{\heiti CWE编号} & {\heiti CWE类型} & {\heiti 解释} \\
+	{\heiti 编号} & {\heiti CWE类型} & {\heiti 解释} \\
 	\midrule[1pt]
 	\endhead 
 	
@@ -1043,7 +1076,7 @@ SignRange是可比较的，对于$ a, b \in D_{SR} $，有：\begin{align}
 	\bottomrule[1.5pt]
 \end{longtable}
 
-本节介绍的基于区间算数的整形缺陷检测方法可直接应用于检测数值型缺陷，即表\ref{tab:CWE}中所对应的CWE-190、CWE-191和CWE-369。对于由数值型缺陷导致的其他缺陷，可使用本节提出的方法配合其他CPA算法加以实现。
+本节介绍的基于区间算数的整型缺陷检测方法可直接应用于检测数值型缺陷，即表\ref{tab:CWE}中所对应的CWE-190、CWE-191和CWE-369。对于由数值型缺陷导致的其他缺陷，可使用本节提出的方法配合其他CPA算法加以实现。
 
 在小节\ref{sec:RangeState}中，我们介绍了控制流自动机CFA的抽象表示RangeState以及其上与CFA边对应的状态变迁关系。本节所述的缺陷检测算法实际上是区间状态RangeState抽象域的一个具体应用。要检测程序是否出现整型溢出、除零异常等缺陷，我们要在原有的区间状态变迁规则基础上，设计缺陷检测规则。
 
@@ -1062,154 +1095,49 @@ SignRange是可比较的，对于$ a, b \in D_{SR} $，有：\begin{align}
 
 其中，函数$ exsists $为MultiRange上的自然扩展。
 
-\section{模块实现} 
-\label{sec:区间算数模块实现}
+\section{环状区间理论域简介}
+\label{sec:WrappedRange}
 
-我们选择在静态分析框架Tsmart-V3上实现上述抽象域与算法。Tsmart-V3基于开源的静态分析框架CPAChecker，在此基础上进行大量的优化与修改，同时提供了相比CPAChecker更加丰富的行为接口与更为丰富的文档。工具使用的编程语言为Java，目标检测语言是C语言。
+尽管本章提出的位敏感线性区间抽象域SignRange能够精确表示整型变量的可能取值范围，但在具体编码实现中会相对复杂。本节将用少量篇幅介绍环状区间WrappedRange，它将作为本章未来的研究内容。
 
-整体的工具的架构设计如图\ref{fig:整型分析架构图}所示。
+在\ref{sec:SignRange}小节中，为了实现对整型变量符号性的表示，我们引入了符号性Signedness与位敏感区间SignRange来扩充现有线性区间在表示性上的不足，并在此基础上实现了对程序状态的抽象表示。但实际上这样的区间设计存在着一定程度的冗余，原因是一个整型变量不论是有符号数还是无符号数，其在计算机上的存储模式是一致的：同一个二进制串既可以按有符号数来解析，又可以按无符号数来解析。但对于SignRange而言，同一个整型变量对应的二进制串按其符号性解析方式不同，对应着两个不同的SignRange。这一方面造成了表示性的冗余，增加静态分析所用的内存，另一方面也增加了编码实现的难度。
+
+为了解决这一问题，本节介绍一种线性区间表示的替代方案——环状区间WrappedRange\cite{navas2012signedness, gange2015interval}，它最早由Navas等人于2012年提出。环状区间的实现思路基于整型变量在计算机中的二进制表示与解析，它实质上模拟了以二进制串存储的整型变量在计算机中的表示与操作。它解决了SignRange对同一个整型变量因符号性不同而产生的不同抽象解释，一定程度上降低了编码实现的难度。
+
+我们以一个具体例子介绍WrappedRange的运作方式，其形式化的定义与详细的计算规则将作为本文的未来研究工作内容，这里不做具体论述。
+
+环状区间通常可表示为由两个长度为$ w $的二进制向量$ x, y $构成的二元组$ [x, y] $。其中，二进制向量$ x, y $可理解为整型数字在计算机中的存储模式。例如，对于$ x = 1001 $表示位宽为4的整型数字，它既可以按有符号数解释为-7，又可按无符号数解释为9。
+
+那么，对于一个环状区间$ r = [x, y] ~($ 其中 $x, y \in \{0, 1\}^w $ 且 $ x \ne y + 1) $，它所表示的具体整数取值范围是：
+\begin{align}
+	r = [x, y] := \begin{cases}
+	\{x, \dots, y\} & x \le y\\
+	\{0^w, \dots, y\} \cup \{x, \dots, 1^w\} & \text{other cases}
+	\end{cases}
+\end{align}
+
+为了便于对环状区间的理解，我们以长度$ w = 4$的向量构成的环状区间为例介绍环状区间的性质与运算。如图\ref{fig:wrappedRange}所示，将$ \{0, 1\}^w $所表示的向量以环状形式排列，则环状区间$ r = [x, y], x, y\in \{0, 1\}^4, x \ne y + 1 $所表示的取值可理解为图\ref{fig:wrappedRange}上以$ x $为起点，以$ y $为终点顺时针访问得到的所有向量。
+
+例如，对于$ r = [0110, 1001] $，其表示范围是$ \{0110, 0111, 1000, 1001\} $，对应有符号数为$ \{6, 7, -8, -7\} $，对应的无符号数为$ \{6, 7, 8, 9\} $。由于区间是环状定义的，因此允许区间的左值大于右值，对应的其区间为图\ref{fig:wrappedRange}中超过180°的扇形区域。例如$ r = [1101, 0001] $的表示范围是$ \{1101, 1110, 1111, 0000, 0001 \} $，对应的有符号数为$ \{-3, -2, -1, 0, 1\} $，对应的无符号数为$ \{13, 14, 15, 0, 1\} $。
+
+那么，对于环状区间$ r_1 = [x_1, y_1], r_2 = [x_2, y_2] $，其加法规则可以表述如下：
+\begin{align}
+	r_1 + r_2 = \begin{cases}
+	[x_1 + x_2, y_1 + y_2] & \mathsf{len}(r_1) + \mathsf{len}(r_2) \le 2^w\\
+	[0^w, 1^w] & \text{other cases}
+	\end{cases}
+\end{align}
+
+类似地，我们可在未来进一步完善环状区间相关的计算规则。
 
 \begin{figure}[H]
 	\centering
-	\includegraphics{整型分析_架构图.pdf}
-	\caption{整型缺陷分析工具架构图}
-	\label{fig:整型分析架构图}
+	\includegraphics{WrappedRange.pdf}
+	\caption{以环状形式列出的所有$ \{0, 1\}^4 $元素}
+	\label{fig:wrappedRange}
 \end{figure}
 
-本模块的实现基于Tsmart静态分析框架，分析框架的输入是C语言源代码，工具的前端程序将C语言代码转化为具有静态单赋值特性的LLVM-IR语言，并在得到的LLVM-IR上构造与之等价的控制流自动机（CFA）。
-
-本模块借助Tsmart提供的接口来获取生成的CFA并以此为基础进行抽象域与检测算法的实现。我们按照前几个小节对理论域RangeInteger、Range、MultiRange、SignRange以及RangeState的介绍，在框架上依次实现其定义及计算规则，同时实现RangeState的状态变迁规则。理论域在工具上的实现结构同图\ref{fig:Domains}。
-
-为了实现整型缺陷检测，我们按照规则\ref{align:overflow}、\ref{align:underflow}和\ref{align:dividebyzero}实现检测规则，并通过调用分析框架提供的缺陷报告输出接口实现整形缺陷的输出。
-
-
-\section{实验过程与结果}
-\label{sec:区间算数实验与结果}
-
-\subsection{实验设计}
-
-为了客观评价本章提出的整型缺陷检测方法，我们选用Juliet Test Suite测试集作为本工具的检测样本。Juliet测试集由美国国家标准技术研究所 (NIST) 整理出的C语言上包含各类标准错误的样例代码集合。针对每一类定义在CWE上的程序缺陷，Juliet有对应的文件夹包含了在不同情境下出现这类错误的情况。
-
-本次实验选用Juliet测试集中的CWE190\_Integer\_Overflow、CWE191\_Integer\_Underflow和CWe369\_Divide\_by\_Zero三类缺陷样例，其中，CWE190包含7个从测试集s01到s07共3420个测试样例；CWE191包含5个从测试集s01到s05共2622个测试样例；CWE369包含测试集s01、s02共684个测试样例。
-
-Juliet测试集为同种缺陷设计了多种多样的发生环境，包括：不同字节长度、不同符号性（有符号数和无符号数）、结构体、枚举、函数调用、循环等。同时，对应的情景也不尽相同，如套接字应用场景、标准输入输出场景、随机数生成等。
-
-本次实验依次将上述测试集的测试样例作为输入，记录工具对各个样例的测试结果并统计误报率、漏报率以及对应的测试时间。其中，误报是指样例本身无缺陷但测试报告指示存在缺陷的情形，漏报是指样例本身存在缺陷但测试报告指示无缺陷的情形。
-
-实验的运行环境列举如下：
-\begin{itemize}
-	\item 操作系统：Ubuntu 16.04 LTS 64位版本
-	\item 处理器：Intel(R) Core(TM) i7-6500U@2.50GHz 4核心CPU
-	\item 内存大小：16GB
-\end{itemize}
-
-\subsection{实验结果}
-
-本章介绍的整形缺陷检测工具在Juliet测试集上的测试结果如表\ref{tab:190Result}（CWE190测试结果）、表\ref{tab:191Result}（CWE191测试结果）和表\ref{tab:369Result}（CWE369测试结果）所示：
-
-\begin{longtable}{ccccccc}
-	\caption[CWE190测试结果]{CWE190测试结果}
-	\label{tab:190Result}  \\ % add \\ command to tell LaTeX to start a new line	
-	
-	% Appear table header at the first page as well
-	\toprule[1.5pt]	
-	{\heiti 测试集} & {\heiti 总数} & {\heiti 误报} & {\heiti 漏报} & {\heiti 误报率} & {\heiti 漏报率} & {\heiti 运行时间} \\
-	\midrule[1pt]
-	\endfirsthead
-	
-	% Appear the table header at the top of every page
-	\multicolumn{7}{c}{续表~\thetable\hskip1em CWE190测试结果}\\
-	\toprule[1.5pt]	
-	{\heiti 测试集} & {\heiti 总数} & {\heiti 误报} & {\heiti 漏报} & {\heiti 误报率} & {\heiti 漏报率} & {\heiti 运行时间} \\
-	\midrule[1pt]
-	\endhead 
-	
-	% Appear \hline at the bottom of every page
-	\hline
-	\multicolumn{7}{r}{续下页}
-	\endfoot 
-	\endlastfoot
-	
-	% data begins here	
-	S01	& 418&	11&	0	&0.026315789&	0 & 7m 49s	\\
-	S02	&418&	11&	0	&0.026315789&	0 & 7m 37s	\\
-	S03	&418&	11&	0	&0.026315789&	0 & 7m 54s	\\
-	S04	&418&	11&	0	&0.026315789&	0 & 7m 47s 	\\
-	S05	&380&	10&	0	&0.026315789&	0 &	8m 31s	\\
-	S06	&684&	18&	0	&0.026315789&	0 &	15m 42s\\
-	S07	&684&	18&	0	&0.026315789&	0 &	16m 2s\\
-	% more data here
-	\bottomrule[1.5pt]
-\end{longtable}
-
-\begin{longtable}{ccccccc}
-	\caption[CWE191测试结果]{CWE191测试结果}
-	\label{tab:191Result}  \\ % add \\ command to tell LaTeX to start a new line	
-	
-	% Appear table header at the first page as well
-	\toprule[1.5pt]	
-	{\heiti 测试集} & {\heiti 总数} & {\heiti 误报} & {\heiti 漏报} & {\heiti 误报率} & {\heiti 漏报率}& {\heiti 运行时间}  \\
-	\midrule[1pt]
-	\endfirsthead
-	
-	% Appear the table header at the top of every page
-	\multicolumn{7}{c}{续表~\thetable\hskip1em CWE191测试结果}\\
-	\toprule[1.5pt]	
-	{\heiti 测试集} & {\heiti 总数} & {\heiti 误报} & {\heiti 漏报} & {\heiti 误报率} & {\heiti 漏报率}& {\heiti 运行时间}  \\
-	\midrule[1pt]
-	\endhead 
-	
-	% Appear \hline at the bottom of every page
-	\hline
-	\multicolumn{7}{r}{续下页}
-	\endfoot 
-	\endlastfoot
-	
-	% data begins here	
-	S01	&418	&11	&0	&0.026315789	&0	& 8m 23s	\\
-	S02	&418	&11	&0	&0.026315789	&0	& 8m 8s	\\
-	S03	&418	&11	&0	&0.026315789	&0	& 8m 50s	\\
-	S04	&684	&18	&0	&0.026315789	&0	& 13m 57s	\\
-	S05	&684	&18	&0	&0.026315789	&0	& 13m 9s	\\
-	% more data here
-	\bottomrule[1.5pt]
-\end{longtable}
-
-\begin{longtable}{ccccccc}
-	\caption[CWE369测试结果]{CWE369测试结果}
-	\label{tab:369Result}  \\ % add \\ command to tell LaTeX to start a new line	
-	
-	% Appear table header at the first page as well
-	\toprule[1.5pt]	
-	{\heiti 测试集} & {\heiti 总数} & {\heiti 误报} & {\heiti 漏报} & {\heiti 误报率} & {\heiti 漏报率} & {\heiti 运行时间}  \\
-	\midrule[1pt]
-	\endfirsthead
-	
-	% Appear the table header at the top of every page
-	\multicolumn{7}{c}{续表~\thetable\hskip1em CWE369测试结果}\\
-	\toprule[1.5pt]	
-	{\heiti 测试集} & {\heiti 总数} & {\heiti 误报} & {\heiti 漏报} & {\heiti 误报率} & {\heiti 漏报率} & {\heiti 运行时间}  \\
-	\midrule[1pt]
-	\endhead 
-	
-	% Appear \hline at the bottom of every page
-	\hline
-	\multicolumn{7}{r}{续下页}
-	\endfoot 
-	\endlastfoot
-	
-	% data begins here	
-	S01	&418	&11	&0	&0.026315789	&0 & 6m 58s	\\
-	S02	&266	&7	&0	&0.026315789	&0	& 4m 35s\\
-	% more data here
-	\bottomrule[1.5pt]
-\end{longtable}
-
-通过表中数据可以看出，本章提出的基于区间运算的整型缺陷分析工具在Juliet-190、191、369上的测试结果良好：误报率小于3\%，漏报率为0\%。其中，造成误报的原因是Tsmart静态分析框架在处理for循环时使用了循环摘要策略，导致整型变量在抽象域上的计算结果有一定的精度丢失。
-
-在分析框架处理循环时，常常需要对循环做摘要处理。这在处理具体问题时是非常有好处的：它避免因循环展开而造成的分析时间不确定的问题，甚至规避了无限次循环展开的情形。为了得到循环摘要，常用的做法是使用循环不变式来计算各个整型变量在循环中的行为，进而计算得到结果。工具的后续研究方向是优化循环不变式的求解，从而获得更高的分析精度。
-
-从分析效率上看，工具在各个测试集上的分析时间均小于10分钟，平均每个测试样例的分析时间小于2秒。具有实际应用价值。
+通过环状区间，我们可以将有符号数、无符号数统一进行表示。但与线性区间Range相同地，它们均面临着无法精细刻画多段区间的情形。在后续工作中，我们将会进一步研究基于环状区间WrappedRange的多区间理论域，进一步提升其表示能力。
 
 \section{本章小结}
 
@@ -1219,9 +1147,10 @@ Juliet测试集为同种缺陷设计了多种多样的发生环境，包括：�
 
 随后，在\ref{sec:MultiRange}和\ref{sec:SignRange}小节，我们介绍了线性多区间MultiRange与位敏感的线性多区间SignRange，它们的提出分别解决了单独的Range区间精度不足以及无法描述符号性的问题。随后为了进一步提升多区间在区间长度较小时的精度，提出了基于拆分-合并思想的精度提升方法。
 
-最后，结合CPA，提出了基于区间算数的缺陷检测方法。该方法基于区间状态RangeState抽象域，它是CFA上程序状态节点的抽象。通过设计抽象域与变迁规则，可以得到整型变量在程序指令执行前后的取值区间，从而实现整型缺陷分析，并通过实验验证了有效性。
+最后，结合CPA，提出了基于区间算数的缺陷检测方法。该方法基于区间状态RangeState抽象域，它是CFA上程序状态节点的抽象。通过设计抽象域与变迁规则，可以得到整型变量在程序指令执行前后的取值区间，从而实现整型缺陷分析。在第\ref{sec:值流图评估与结果}章节，我们将通过实验，验证基于区间算数的缺陷检测方法的有效性。
 
-在实验中，测试用例的误报主要原自基于for循环的检测。由于循环摘要的精度受制于循环不变式技术，为了进一步提升整型缺陷分析在循环中的精度，后续的工作重点将集中在循环不变式上。
+值得一提的是，本章设计的位敏感的线性多区间SignRange是对整型变量的具体含义做抽象，其并未反应变量在计算机中的实际存储。实际上，针对存储于计算机上的0-1二进制串，我们以有符号数和无符号数对其进行解析时会得到两个不同的SignRange抽象表示，这会给该理论域的具体编程实现带来一定的困难，并造成一定程度的表示冗余。为了解决这一问题，本章于\ref{sec:WrappedRange}介绍了环状区间的概念，并希望以此解决上述问题。该理论域的具体实现与优化将作为今后研究的方向。
+
 
 
 
