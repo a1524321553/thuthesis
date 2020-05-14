@@ -1,9 +1,9 @@
 % !TeX root = ../main.tex
 
-\chapter{基于区间算数的整数缺陷检测}
+\chapter{基于区间代数的整数缺陷检测}
 \label{sec:区间算数}
 
-本章介绍基于区间算数的整数缺陷检测技术。旨在通过设计线性区间理论域，得到程序中整型变量的抽象表示，通过设计并借助变迁函数来模拟程序指令在抽象表示上的作用，实现程序的行为分析。在此基础上实现程序中数值导向型缺陷检测。
+本章介绍基于区间代数的整数缺陷检测技术。旨在通过设计线性区间理论域，得到程序中整型变量的抽象表示，通过设计并借助变迁函数来模拟程序指令在抽象表示上的作用，实现程序的行为分析。在此基础上实现程序中数值导向型缺陷检测。
 
 本章的结构安排如下：\ref{sec:区间算数引言}小节通过一个区间分析的案例，介绍了当前基于区间分析存在的精度不足问题，引出本章研究内容；\ref{sec:区间算数预备知识}小节介绍本章研究内容所需的预备知识，包括控制流自动机的概念与定义和可配置静态分析框架的概念；\ref{sec:区间算数抽象域设计}小节依照层次结构分别介绍了具体的线性区间理论域的设计，并介绍抽象域上的变迁函数；最后，本章\ref{sec:区间算数缺陷检测方法}小节利用设计的抽象域与变迁规则，给出程序的整型缺陷检测方法。我们于\ref{sec:WrappedRange}小节通过具体例子介绍环状区间，并以此展开，介绍未来可能的研究方向。
 
@@ -35,7 +35,7 @@ void funcA(int i) {
 			\begin{lstlisting}[xleftmargin=.25\textwidth]
 int funcB(int i) {
 	int x;
-	if (x > 3) {
+	if (i > 3) {
 		x = 3 - i;
 	} else {
 		x = i;
@@ -46,13 +46,13 @@ int funcB(int i) {
 %		   (-∞, 3]
 %			\caption{A listing}
 \end{subfigure}
-	\caption{基于区间算数的缺陷检测方法举例}
+	\caption{基于区间代数的缺陷检测方法举例}
 	\label{fig:codeExampleForSignRange}
 \end{figure}{\tiny }
 
 考虑图\ref{fig:codeExampleForSignRange}所示代码：函数A作为程序的入口，通过用户输入得到整型数值i，并根据i的大小使用不同的逻辑调用函数B并处理函数返回值。这里为讨论方便起见，规定int可表示所有整数值。若使用传统的基于整数区间抽象的数据流分析算法进行程序分析，易知函数B的返回值范围是$ [-\infty, 3] $，则函数A中第4行x的取值范围是$ [-\infty, -2] $，第6行x的取值范围是$ [2, +\infty] $。在第8行，由于状态合并，x的取值范围是$ [-\infty, +\infty] $，这将导致目标属性不成立。但实际上x的取值范围不包含0，目标属性是安全的。
 
-为了解决上述问题，进一步提高程序分析的精度，本章提出了基于区间算数的整数缺陷检测技术，并在基于CPAchecker\cite{beyer2007configurable}的可配置的组合静态分析工具Tsmart上进行了实现。经过实验，基于本章工作实现的工具在Juliet测试集上的误报率小于3\%，漏报率为0\%。
+为了解决上述问题，进一步提高程序分析的精度，本章提出了基于区间代数的整数缺陷检测技术，并在基于CPAchecker\cite{beyer2007configurable}的可配置的组合静态分析工具Tsmart上进行了实现。经过实验，基于本章工作实现的工具在Juliet测试集上的误报率小于3\%，漏报率为0\%。
 
 \section{预备知识}
 \label{sec:区间算数预备知识}
@@ -125,6 +125,7 @@ int funcB(int i) {
 \end{align}
 
 \subsection{可配置程序分析框架} 
+\label{sec:可配置程序分析框架}
 
 可配置程序分析（Configurable Program Analysis，CPA）是一种通用的程序分析框架，通过设计并配置相关参数，实现在同一框架下完成多种不同的静态分析任务。通常，CPA框架将程序源代码转化为语义等价的控制流自动机并在CFA上多次应用静态分析算法实现程序分析。其中，CFA是源程序的等价表示，可描述为有向图。其节点表示指令位置、边表示控制流操作，如变量声明、运算、赋值、函数调用等。在分析时，我们常将内存地址抽象为内存位置，如访问路径\cite{cheng2000modular}等。
 
@@ -176,7 +177,11 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 \section{基于线性空间的抽象域设计}
 \label{sec:区间算数抽象域设计}
 
-本节介绍基于线性空间的抽象域，抽象域的组成结构如图\ref{fig:Domains}所示。RangeState为程序变量在线性空间的抽象表示，它包含整型变量的访问路径、取值范围、符号等信息。
+本节介绍基于线性空间的抽象域，其组成结构如图\ref{fig:Domains}所示。这里，位于最底层的是扩展的整数（RangeInteger）理论域，它是整数域的一个扩展，用于表示整型变量的某个可能取值。线性区间（Range）理论域表示整数区间，它是传统区间分析理论域的一个实现，以单独区间表示整型变量可能的取值范围。
+
+在\ref{sec:区间算数引言}小节中，我们以图\ref{fig:codeExampleForSignRange}所示代码为例介绍了传统区间分析因区间个数问题所带来的精度丢失问题。为此，我们设计了线性多区间（MultiRange）理论域，它由若干个线性区间组成，具有更强的表示能力与更高的分析精度。更进一步地，面对具体的编程语言中整型变量所具有的位宽与符号性等属性，我们设计了位敏感的线性区间（SignRange）理论域，它是由线性多区间、位宽（Bitwidth）与符号性（Signedness）构成的三元组，使用SignRange可较好地刻画一个具有固定位宽的整型变量的可能取值范围，同时包含变量符号性信息。
+
+在此基础上，我们引入区间状态（RangeState）抽象域，它描述了程序在某个状态下各个整型变量的取值信息，包括变量访问路径（AccessPath）、取值范围、符号性等。通过设计RangeState上的变迁关系（TransferRelation），我们可以得到程序在线性空间抽象域上的语义表示，为后续的整型缺陷分析提供支持。
 
 \begin{figure}[H]
 	\centering
@@ -253,7 +258,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 			x & x = \pm\infty \land y \ne \pm\infty\\
 			y & x \ne \pm\infty \land y = \pm\infty\\
 			x & x, y = \pm\infty \land signum(x) = signum(y) \\
-			nan & \text{other cases}
+			nan & \text{其他}
 		\end{cases}$ \\
 		
 		subtract & $ -_I $ & $ x -_I y := \begin{cases}
@@ -261,14 +266,14 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 			x & x = \pm\infty \land y \ne \pm\infty\\
 			neg(y) & x \ne \pm\infty \land y = \pm\infty\\
 			x & x, y = \pm\infty \land signum(x) \ne signum(y) \\
-			nan & \text{other cases}
+			nan & \text{其他}
 		\end{cases} $\\
 		
 		multiply & $ \times_I $ & $ x \times_I y := \begin{cases}
 			x \times y & x, y \ne \pm\infty\\
 			+\infty & signum(x) \times signum(y) > 0\\
 			-\infty & signum(x) \times signum(y) < 0\\
-			nan & \text{other cases}
+			nan & \text{其他}
 		\end{cases} $\\
 		
 		\begin{tabular}{c}
@@ -278,7 +283,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 			x \div y & x, y \ne \pm\infty\\
 			0 & x \ne \pm\infty \land y = \pm\infty\\
 			+\infty \times_I signum(x \times_I y) & x = \pm\infty \land y \ne \pm\infty\\				
-			nan & \text{other cases}
+			nan & \text{其他}
 		\end{cases} $\\
 		
 		\begin{tabular}{c}
@@ -288,7 +293,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 		x \mod y & x, y \ne \pm\infty\\
 		x & x \ge 0 \land y = +\infty\\
 		y & x < 0 \land y =+\infty\\
-		nan & \text{other cases}
+		nan & \text{其他}
 		\end{cases} $\\
 		
 		\begin{tabular}{c}
@@ -305,7 +310,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 		$ >>_I $
 	\end{tabular} & $ x \cdot_{op_I} y := \begin{cases}
 		x \cdot_{op} y & x, y \ne \pm\infty\\
-		nan & \text{other cases}
+		nan & \text{其他}
 		\end{cases} $\\
 	
 	% more data here
@@ -315,7 +320,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 \subsection{线性区间理论域}
 \label{sec:Range}
 
-线性区间Range一个整数区间，表示整型变量的可能取值范围，它是由两个整数$ x, y $构成的二元组。这里，$ x, y $为扩展的整数域RangeInteger上的元素，其定义与偏序关系定义如下。
+线性区间Range是一个整数区间，表示整型变量的可能取值范围。它是由两个整数$ x, y $构成的二元组。这里，$ x, y $为扩展的整数域RangeInteger上的元素，其定义与偏序关系定义如下。
 
 \begin{definition}
 	线性区间理论域$ D_R :=  \{ [x, y] | x \in \mathbf{I}, y \in \mathbf{I}, x \le y \} \cup \{ \emptyset \}$是一个半格：	
@@ -413,7 +418,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 			[0, y_2] & x_2 = y_2 \ge 0\\
 			[0, +\infty] & x_1 \ge 0 \lor x_2 \ge 0\\
 			[-\infty, -1] & y_1 < 0 \land y_2 < 0\\
-			[-\infty, +\infty] & \text{other cases}
+			[-\infty, +\infty] & \text{其他}
 		\end{cases} $
 	\end{tabular}\\
 	
@@ -426,7 +431,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 			[-1, -1] & x_1 = y_1 = -1 \lor x_2 = y_2 = -1\\
 			[\max(x_1, x_2), +\infty] & x_1 \ge 0 \land x_2 \ge 0\\
 			[-\infty, -1] & y_1 < 0 \lor y_2 < 0\\
-			[-\infty, +\infty] & \text{other cases}
+			[-\infty, +\infty] & \text{其他}
 		\end{cases} $
 	\end{tabular}\\
 
@@ -440,7 +445,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 			[x_2, y_2] & x_1 = y_1 = 0\\
 			[-\infty, +\infty] & x_1 \times_I x_2 < 0 \lor x_2 \times_I x_2 < 0\\
 			[0, +\infty] & (x_1 \ge 0 \land x_2 \ge 0) \lor (y_1 < 0 \land y_2 < 0)\\
-			[-\infty, -1] & \text{other cases}
+			[-\infty, -1] & \text{其他}
 		\end{cases} $
 	\end{tabular}\\
 
@@ -451,7 +456,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 		$ \begin{cases}
 			\emptyset & y_2 < 0\\
 			[x_1, y_1] <<_R [0, y_2] & 0 \in [x_2, y_2]\\
-			[\min(vals), \max(vals)] & \text{other cases}, vals = \{x_1, y_1\} \times_{<<_I} \{x_2, y_2\}
+			[\min(vals), \max(vals)] & \text{其他，} vals = \{x_1, y_1\} \times_{<<_I} \{x_2, y_2\}
 		\end{cases} $
 	\end{tabular}\\
 
@@ -462,7 +467,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 		$ \begin{cases}
 		\emptyset & y_2 < 0\\
 		[x_1, y_1] >>_R [0, y_2] & 0 \in [x_2, y_2]\\
-		[\min(vals), \max(vals)] & \text{other cases}, vals = \{x_1, y_1\} \times_{>>_I} \{x_2, y_2\}
+		[\min(vals), \max(vals)] & \text{其他，}vals = \{x_1, y_1\} \times_{>>_I} \{x_2, y_2\}
 		\end{cases} $
 	\end{tabular}\\
 	% more data here
@@ -472,9 +477,9 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 在表格中，我们定义了构造函数$ [[\cdot]]_R $，利用它可以方便的构造Range：
 \begin{align}
 [[x, y]]_R := \begin{cases}
-[x, y] & (x, y \text{ is comparable}) \land x \le y\\
-[y, x] & (x, y \text{ is comparable}) \land x > y\\
-\emptyset & \text{other cases}
+[x, y] & x, y \text{是可比较的，且}  x \le y\\
+[y, x] & x, y \text{是可比较的，且}  x > y\\
+\emptyset & \text{其他}
 \end{cases}
 \end{align}
 
@@ -505,7 +510,7 @@ Range是可比较的，对于$ a = [x_1, y_1], b = [x_2, y_2] \in D_R $，有：
 		
 		\item $ D_{MR} $上的偏序关系（$ \le_{MR} $）定义为：\\
 			\centerline{$[a_1, \dots, a_m] \le_{MR} [b_1, \dots, b_n] \iff$}
-			\centerline{$ \forall \ a_i, \ \exists\  b_j \text{ that} \ a_i \le_R b_j .\  (0 \le i \le m, 0 \le j \le n)$；}
+			\centerline{$ \forall \ a_i, \ \exists\  b_j \text{ 使得} \ a_i \le_R b_j .\  (0 \le i \le m, 0 \le j \le n)$；}
 			
 		\item $ D_{MR} $上的上确界操作（$ \sqcup_{MR} $）定义为：\\
 			\centerline{$ [a_1, \dots, a_m] \sqcup_{MR} [b_1, \dots, b_n]  := $}
@@ -764,7 +769,7 @@ MultiRange是可比较的，对于$ a = [a_1, \dots, a_m], b = [b_1, \dots, b_n]
 	a \cdot_{op} b := \begin{cases}
 		a |_{to}(U) \cdot_{op} b |_{to}(U) & \mathsf{s}(a) = U \lor \mathsf{s}(b) = U\\
 		a \cdot_{op} b & \mathsf{s}(a) = N \land \mathsf{s}(b) = N\\
-		a |_{to}(S) \cdot_{op} b |_{to}(S) & \text{other cases}
+		a |_{to}(S) \cdot_{op} b |_{to}(S) & \text{其他}
 	\end{cases}
 \end{align}
 
@@ -1019,14 +1024,14 @@ SignRange是可比较的，对于$ a, b \in D_{SR} $，有：\begin{align}
 	x \cdot_{op} y := \begin{cases}
 		[[\mathsf{disperse}(x) \times_{\cdot_{op_R}} \mathsf{disperse}(y)]]_{MR} & 
 			\mathsf{cnt}(x), \mathsf{cnt}(y) \le L_{MR}\\
-		x \cdot_{op} y & \text{other cases}
+		x \cdot_{op} y & \text{其他}
 	\end{cases}
 \end{align}
 
 其中，操作符$ \cdot_{op_R} $为操作符$ \cdot_{op} $在理论域$ D_R $上的对应版本。另一方面，在位敏感的线性区间SignRange上，由于其计算规则的定义是MultiRange的扩展，因此无需修改，直接应用优化后的计算规则即可。
 
 
-\section{基于区间算数的整数缺陷检测方法}
+\section{基于区间代数的整数缺陷检测方法}
 \label{sec:区间算数缺陷检测方法}
 
 整型缺陷按照类型通常可分为两类：一类是数值型缺陷，这包括比如整型的上溢出、下溢出、整型的除零异常等；另一类是由数值型缺陷所引发的其他类型缺陷。典型的如内存泄漏、缓冲区溢出等。这类问题相较于单纯的数值型缺陷往往危害更大。以上两类缺陷可统称为数值导向型缺陷。
@@ -1076,24 +1081,52 @@ SignRange是可比较的，对于$ a, b \in D_{SR} $，有：\begin{align}
 	\bottomrule[1.5pt]
 \end{longtable}
 
-本节介绍的基于区间算数的整型缺陷检测方法可直接应用于检测数值型缺陷，即表\ref{tab:CWE}中所对应的CWE-190、CWE-191和CWE-369。对于由数值型缺陷导致的其他缺陷，可使用本节提出的方法配合其他CPA算法加以实现。
+本节介绍的基于区间代数的整型缺陷检测方法可直接应用于检测数值型缺陷，即表\ref{tab:CWE}中所对应的CWE-190、CWE-191和CWE-369。对于由数值型缺陷导致的其他缺陷，可使用本节提出的方法配合其他CPA算法加以实现。
 
 在小节\ref{sec:RangeState}中，我们介绍了控制流自动机CFA的抽象表示RangeState以及其上与CFA边对应的状态变迁关系。本节所述的缺陷检测算法实际上是区间状态RangeState抽象域的一个具体应用。要检测程序是否出现整型溢出、除零异常等缺陷，我们要在原有的区间状态变迁规则基础上，设计缺陷检测规则。
 
 通过分析，易知如需检测整型的溢出和除零异常缺陷，仅需关注程序中的整型变量在二元运算或位宽转换指令时的状态即可。
 
-对于CFA上通过边$ e $连接的两个状态节点$ n_1, n_2 $。当$ e $是形如$ x = y \cdot_{op} z $ ，其中 $\cdot_{op} \in \{ add, subtract, multiply, divide, mod, shl, shr \} $这样的操作边（InstructionEdge）时，我们对其应用上溢出和下溢出检测规则：
+对于CFA上通过边$ e $连接的两个状态节点$ n_1, n_2 $。当$ e $是形如$ x = y \cdot_{op} z $ ，其中 $\cdot_{op} \in \{ add, subtract, multiply, shl, shr \} $这样的操作边（InstructionEdge）时，我们对其应用上溢出和下溢出检测规则：
 \begin{align}
-	\label{align:overflow}\mathsf{reportOverflow}(n_1, e) \iff top(X) < high(X), X = S_1(y) \cdot_{op_{SR}} S_1(z)\\
-	\label{align:underflow}\mathsf{reportUnderflow}(n_1, e) \iff low(X) < top(X), X = S_1(y) \cdot_{op_{SR}} S_1(z)
+	\label{align:overflow}\mathsf{isOverflow}(n_1, e) \iff top(X) < high(X), X = S_1(y) \cdot_{op_{SR}} S_1(z)\\
+	\label{align:underflow}\mathsf{isUnderflow}(n_1, e) \iff low(X) < top(X), X = S_1(y) \cdot_{op_{SR}} S_1(z)
 \end{align}
 
 其中，操作符$ \cdot_{op_{SR}} $是操作符$ \cdot_{op} $在SignRange上的对应版本。$ S_1, S_2 $是状态节点$ n_1, n_2 $在区间状态理论域$ D_S $上的抽象表示。类似的，当 $\cdot_{op} \in \{ divide, mod \} $时，我们应用除零检测规则：
 \begin{align}
-	\label{align:dividebyzero}\mathsf{reportDivideByZero}(n_1, e) \iff X.exsists(0), X = S_1(y) \cdot_{op_{SR}} S_1(z)
+	\label{align:dividebyzero}\mathsf{isDivideByZero}(n_1, e) \iff X.exsists(0), X = S_1(y) \cdot_{op_{SR}} S_1(z)
 \end{align}
 
-其中，函数$ exsists $为MultiRange上的自然扩展。
+其中，函数$ exsists $为MultiRange上的自然扩展。我们将上述检测规则描述为算法\ref{alg:checkEdge}。对CFA上的每条边，应用checkEdge判定其是否存在整型缺陷，并生成缺陷报告。
+
+\begin{breakablealgorithm}
+	\caption{checkEdge for CWE190, 191 and 369}
+	\label{alg:checkEdge}
+	\begin{algorithmic}[1]
+		
+		\Require $ e \in E, n_1, n_2 \in N$，其中$ e $是CFA中连接节点$ n_1, n_2 $的有向边
+		
+		\If{$ type(e) = inst \land act(e) = \cdot_{op} $}
+		
+			\If{$ \cdot_{op} \in \{add, subtract, multiply, shl, shr \} \land \mathsf{Wrapped}$ is false }
+				\If{$ \mathsf{isOverflow(n_1, e)} $}
+					\State report an IntegerOverflow weakness at $ (n_1, e) $
+				\ElsIf{$ \mathsf{isUnderflow(n_1, e)} $}
+					\State report an IntegerUnderflow weakness at $ (n_1, e) $
+				\EndIf
+			\EndIf
+			
+			\If{$ \cdot_{op} \in \{divide, mod\} \land \mathsf{isDivideByZero(n_1, e)}$}
+				\State report a DivideByZero weakness at $ (n_1, e) $
+			\EndIf
+		
+		\EndIf
+				
+	\end{algorithmic}
+\end{breakablealgorithm}
+
+上述算法中，$ \mathsf{Wrapped} $符号来自LLVM-IR指令，对应于二元运算中的NSW与NUW符号，用于表征运算是否允许因运算上溢出、下溢出所带来的数值翻转。
 
 \section{环状区间理论域简介}
 \label{sec:WrappedRange}
@@ -1112,7 +1145,7 @@ SignRange是可比较的，对于$ a, b \in D_{SR} $，有：\begin{align}
 \begin{align}
 	r = [x, y] := \begin{cases}
 	\{x, \dots, y\} & x \le y\\
-	\{0^w, \dots, y\} \cup \{x, \dots, 1^w\} & \text{other cases}
+	\{0^w, \dots, y\} \cup \{x, \dots, 1^w\} & \text{其他}
 	\end{cases}
 \end{align}
 
@@ -1124,13 +1157,13 @@ SignRange是可比较的，对于$ a, b \in D_{SR} $，有：\begin{align}
 \begin{align}
 	r_1 + r_2 = \begin{cases}
 	[x_1 + x_2, y_1 + y_2] & \mathsf{len}(r_1) + \mathsf{len}(r_2) \le 2^w\\
-	[0^w, 1^w] & \text{other cases}
+	[0^w, 1^w] & \text{其他}
 	\end{cases}
 \end{align}
 
 类似地，我们可在未来进一步完善环状区间相关的计算规则。
 
-\begin{figure}[H]
+\begin{figure}[htb]
 	\centering
 	\includegraphics{WrappedRange.pdf}
 	\caption{以环状形式列出的所有$ \{0, 1\}^4 $元素}
@@ -1141,13 +1174,13 @@ SignRange是可比较的，对于$ a, b \in D_{SR} $，有：\begin{align}
 
 \section{本章小结}
 
-本章介绍了基于区间算数的整型缺陷分析方法，其核心是理论域的设计。本章先介绍了整体的区间设计，随后依次对各个抽象层面进行介绍，并结合控制流自动机，设计了整型变量的缺陷检测规则。最后，在基于Tsmart-V3静态分析框架上做了实现，并通过实验验证了其有效性。
+本章介绍了基于区间代数的整型缺陷分析方法，其核心是理论域的设计。本章先介绍了整体的区间设计，随后依次对各个抽象层面进行介绍，并结合控制流自动机，设计了整型变量的缺陷检测规则。最后，在基于Tsmart-V3静态分析框架上做了实现，并通过实验验证了其有效性。
 
 在\ref{sec:Integer}小节，我们介绍了扩展的整数RangeInteger，相比于整数，其具体定义了$ +\infty $和$ -\infty $的概念，同时，我们介绍了有$ -\infty, +\infty $参与的整数运算规则，为后续介绍区间抽象域奠定了基础。在\ref{sec:Range}小节，介绍了基于扩展整数的区间Range，它以单独区间的形式表示了一个整型变量的可能取值范围，并首次定义整数区间上的运算规则。
 
 随后，在\ref{sec:MultiRange}和\ref{sec:SignRange}小节，我们介绍了线性多区间MultiRange与位敏感的线性多区间SignRange，它们的提出分别解决了单独的Range区间精度不足以及无法描述符号性的问题。随后为了进一步提升多区间在区间长度较小时的精度，提出了基于拆分-合并思想的精度提升方法。
 
-最后，结合CPA，提出了基于区间算数的缺陷检测方法。该方法基于区间状态RangeState抽象域，它是CFA上程序状态节点的抽象。通过设计抽象域与变迁规则，可以得到整型变量在程序指令执行前后的取值区间，从而实现整型缺陷分析。在第\ref{sec:值流图评估与结果}章节，我们将通过实验，验证基于区间算数的缺陷检测方法的有效性。
+最后，结合CPA，提出了基于区间代数的缺陷检测方法。该方法基于区间状态RangeState抽象域，它是CFA上程序状态节点的抽象。通过设计抽象域与变迁规则，可以得到整型变量在程序指令执行前后的取值区间，从而实现整型缺陷分析。在第\ref{sec:值流图评估与结果}章节，我们将通过实验，验证基于区间代数的缺陷检测方法的有效性。
 
 值得一提的是，本章设计的位敏感的线性多区间SignRange是对整型变量的具体含义做抽象，其并未反应变量在计算机中的实际存储。实际上，针对存储于计算机上的0-1二进制串，我们以有符号数和无符号数对其进行解析时会得到两个不同的SignRange抽象表示，这会给该理论域的具体编程实现带来一定的困难，并造成一定程度的表示冗余。为了解决这一问题，本章于\ref{sec:WrappedRange}介绍了环状区间的概念，并希望以此解决上述问题。该理论域的具体实现与优化将作为今后研究的方向。
 

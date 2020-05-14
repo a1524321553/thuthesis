@@ -156,7 +156,7 @@ int calculateGear(uint x, uint y, uint diverse, int oldGear)
 int main() {
 	int x = 0, y = 1;
 	int *a;
-	int p;
+	int p = nondet_int(); // 将p初始化为不确定的整数
 	if (p)
 		a = &x;
 	else
