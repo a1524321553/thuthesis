@@ -250,18 +250,19 @@ Juliet测试集中，所有正确实现的函数均以“xxx\_xxx\_good”命名
 	\centering
 	\caption{自动生成摘要和人工生成摘要的对比}
 	\label{tab:summaryComparision}
-	\begin{tabular}{|c|c|c|c|c|c|c|c|}
-		\hline
-		\multicolumn{2}{|c|}{程序代码} & 实际需求 & \multicolumn{4}{c|}{自动摘要} & \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}正确\\ 率\end{tabular}} \\ \cline{1-7}
-		类型 & 代码行 & 分支数 & 分支数 & 耗时/s & 内存/MB & VFG大小/KB &  \\ \hline
-		三角形判定 & 24 & 4 & 4 & 3 & 134 & 9 & 1.0 \\ \hline
-		绝对值 & 11 & 2 & 2 & 2 & 122 & 2 & 1.0 \\ \hline
-		滤波算法 & 19 & 1 & 1 & 2 & 128 & 4 & 1.0 \\ \hline
-		校验和算法 & 22 & 1 & 1 & 2 & 145 & 12 & 1.0 \\ \hline
-		车辆控制系统 & 124 & 12 & 12 & 5 & 167 & 53 & 1.0 \\ \hline
-		航发控制系统 & 178 & 15 & 15 & 6 & 171 & 61 & 1.0 \\ \hline
-		Goto语句 & 57 & 8 & 8 & 4 & 137 & 34 & 1.0 \\ \hline
-		函数指针 & 36 & 3 & 3 & 3 & 132 & 6 & 1.0 \\ \hline
+	\begin{tabular}{cccccccc}
+		\toprule[1.5pt]	
+		\multicolumn{2}{c}{\heiti 程序代码} & {\heiti 实际需求} & \multicolumn{4}{c}{\heiti 自动摘要} & \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}{\heiti 正确}\\ {\heiti 率}\end{tabular}} \\ \cline{1-7}
+		类型 & 代码行 & 分支数 & 分支数 & 耗时/s & 内存/MB & VFG大小/KB &  \\ \midrule[1pt]
+		三角形判定 & 24 & 4 & 4 & 3 & 134 & 9 & 1.0 \\ 
+		绝对值 & 11 & 2 & 2 & 2 & 122 & 2 & 1.0 \\ 
+		滤波算法 & 19 & 1 & 1 & 2 & 128 & 4 & 1.0 \\ 
+		校验和算法 & 22 & 1 & 1 & 2 & 145 & 12 & 1.0 \\ 
+		车辆控制系统 & 124 & 12 & 12 & 5 & 167 & 53 & 1.0 \\ 
+		航发控制系统 & 178 & 15 & 15 & 6 & 171 & 61 & 1.0 \\ 
+		Goto语句 & 57 & 8 & 8 & 4 & 137 & 34 & 1.0 \\ 
+		函数指针 & 36 & 3 & 3 & 3 & 132 & 6 & 1.0 \\
+		\bottomrule[1.5pt]
 	\end{tabular}
 \end{table}
 

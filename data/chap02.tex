@@ -323,7 +323,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 线性区间Range是一个整数区间，表示整型变量的可能取值范围。它是由两个整数$ x, y $构成的二元组。这里，$ x, y $为扩展的整数域RangeInteger上的元素，其定义与偏序关系定义如下。
 
 \begin{definition}
-	线性区间理论域$ D_R :=  \{ [x, y] | x \in \mathbf{I}, y \in \mathbf{I}, x \le y \} \cup \{ \emptyset \}$是一个半格：	
+	线性区间理论域$ D_R :=  \{ [x, y]~ |~ x , y \in D_I, x \le y \} \cup \{ \emptyset \}$是一个半格：	
 	\begin{itemize}
 		\item $ D_R $上的最大元（$ \top_R $）是$ [-\infty, +\infty] $，最小元（$ \bot_R $）是空集$ \emptyset $；
 		\item $ D_R $上的偏序关系（$ \le_R $）定义为：\\	
@@ -598,8 +598,8 @@ Range是可比较的，对于$ a = [x_1, y_1], b = [x_2, y_2] \in D_R $，有：
 	
 	\begin{tabular}{c}
 		modular\\
-	\end{tabular} & $ \mod_{MR} $ & \begin{tabular}{lc}
-		$ a \mod_{MR}  \,  b :=   [[a \times_{\mod_R} b]]_{MR}, \, b \ne 0 $
+	\end{tabular} & $ mod_{MR} $ & \begin{tabular}{lc}
+		$ a ~mod_{MR}  \,  b :=   [[a \times_{mod_R} b]]_{MR}, \, b \ne 0 $
 	\end{tabular}\\
 	
 	\begin{tabular}{c}
@@ -1151,6 +1151,13 @@ SignRange是可比较的，对于$ a, b \in D_{SR} $，有：\begin{align}
 
 为了便于对环状区间的理解，我们以长度$ w = 4$的向量构成的环状区间为例介绍环状区间的性质与运算。如图\ref{fig:wrappedRange}所示，将$ \{0, 1\}^w $所表示的向量以环状形式排列，则环状区间$ r = [x, y], x, y\in \{0, 1\}^4, x \ne y + 1 $所表示的取值可理解为图\ref{fig:wrappedRange}上以$ x $为起点，以$ y $为终点顺时针访问得到的所有向量。
 
+\begin{figure}[htb]
+	\centering
+	\includegraphics[width=4in]{WrappedRange.pdf}
+	\caption{以环状形式列出的所有$ \{0, 1\}^4 $元素}
+	\label{fig:wrappedRange}
+\end{figure}
+
 例如，对于$ r = [0110, 1001] $，其表示范围是$ \{0110, 0111, 1000, 1001\} $，对应有符号数为$ \{6, 7, -8, -7\} $，对应的无符号数为$ \{6, 7, 8, 9\} $。由于区间是环状定义的，因此允许区间的左值大于右值，对应的其区间为图\ref{fig:wrappedRange}中超过180°的扇形区域。例如$ r = [1101, 0001] $的表示范围是$ \{1101, 1110, 1111, 0000, 0001 \} $，对应的有符号数为$ \{-3, -2, -1, 0, 1\} $，对应的无符号数为$ \{13, 14, 15, 0, 1\} $。
 
 那么，对于环状区间$ r_1 = [x_1, y_1], r_2 = [x_2, y_2] $，其加法规则可以表述如下：
@@ -1162,13 +1169,6 @@ SignRange是可比较的，对于$ a, b \in D_{SR} $，有：\begin{align}
 \end{align}
 
 类似地，我们可在未来进一步完善环状区间相关的计算规则。
-
-\begin{figure}[htb]
-	\centering
-	\includegraphics{WrappedRange.pdf}
-	\caption{以环状形式列出的所有$ \{0, 1\}^4 $元素}
-	\label{fig:wrappedRange}
-\end{figure}
 
 通过环状区间，我们可以将有符号数、无符号数统一进行表示。但与线性区间Range相同地，它们均面临着无法精细刻画多段区间的情形。在后续工作中，我们将会进一步研究基于环状区间WrappedRange的多区间理论域，进一步提升其表示能力。
 
