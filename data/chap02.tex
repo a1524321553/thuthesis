@@ -3,7 +3,7 @@
 \chapter{基于区间代数的整数缺陷检测}
 \label{sec:区间算数}
 
-本章介绍基于区间代数的整数缺陷检测技术。旨在通过设计线性区间理论域，得到程序中整型变量的抽象表示，通过设计并借助变迁函数来模拟程序指令在抽象表示上的作用，实现程序的行为分析。在此基础上实现程序中数值导向型缺陷检测。
+本章介绍基于区间代数的整数缺陷检测技术。旨在通过设计线性区间理论域，得到程序中整型变量的抽象表示，通过设计并借助变迁函数来模拟程序指令在抽象表示上的作用，实现程序的行为分析。在此基础上实现程序中数值导向型缺陷的缺陷检测。
 
 本章的结构安排如下：\ref{sec:区间算数引言}小节通过一个区间分析的案例，介绍了当前基于区间分析存在的精度不足问题，引出本章研究内容；\ref{sec:区间算数预备知识}小节介绍本章研究内容所需的预备知识，包括控制流自动机的概念与定义和可配置静态分析框架的概念；\ref{sec:区间算数抽象域设计}小节依照层次结构分别介绍了具体的线性区间理论域的设计，并介绍抽象域上的变迁函数；最后，本章\ref{sec:区间算数缺陷检测方法}小节利用设计的抽象域与变迁规则，给出程序的整型缺陷检测方法。我们于\ref{sec:WrappedRange}小节通过具体例子介绍环状区间，并以此展开，介绍未来可能的研究方向。
 
@@ -200,7 +200,7 @@ CPA算法的一次分析可表示为四元组$ \mathbb{D} = (D, \rightsquigarrow
 	\begin{itemize}
 		\item $ D_I $上的最大元（$ \top_I $）为$ arb $，它表示任意值；最小元（$ \bot_I $）为$ nan $，它表示非数；
 		
-		\item $ D_I $上的偏序关系（$ \le_I $）为$ \mathbf{Z} $上的自然扩展，对于元素$ -\infty $与$ +\infty $，规定$ -\infty < +\infty $，且对任意$ x \in \mathbf{Z} $，有$ x < +\infty $以及$ -\infty < x $。特殊地，$ -\infty $与$ -\infty $、$ +\infty $与$ +\infty $无法比较，$ \bot_I, \top_I $与其他任意元素无法比较。
+		\item $ D_I $上的偏序关系（$ \le_I $）为$ \mathbf{Z} $上的自然扩展，对于元素$ -\infty $与$ +\infty $，规定$ -\infty < +\infty $，且对任意$ x \in \mathbf{Z} $，有$ x < +\infty $以及$ -\infty < x $。特殊地，$ -\infty $与$ -\infty $、$ +\infty $与$ +\infty $无法比较，$ \bot_I, \top_I $与其他任意元素无法比较；
 		
 		\item $ D_I $上的上确界操作（$ \sqcup_I $）定义为：\\
 		\centerline{$ a \sqcup_I b := \begin{cases}
@@ -519,7 +519,7 @@ Range是可比较的，对于$ a = [x_1, y_1], b = [x_2, y_2] \in D_R $，有：
 	
 \end{definition}
 
-上述的定义中使用了MultiRange的构造函数$ [[\cdot]]_{MR} $，其函数逻辑如算法\ref{alg:MultiRange}所示。该函数接受一个由Range组成的集合$ ranges $或直接给出待组合的Range列表$ range_1, range_2, \dots, range_n $。首先根据每个区间的左值和右值进行排序，得到有序的Range列表$ ranges $。并将$ ranges $中所有相互包含或相邻的区间进行合并，得到有序的且不互相包含、连接的区间列表$ nRanges $。为了保证得到的MultiRange中Range的个数小于$ L_{MR} $，在算法结束前不断合并前后相邻的且距离最小的Range直至其个数满足要求。
+上述的定义中使用了MultiRange的构造函数$ [[\cdot]]_{MR} $，其函数逻辑如算法\ref{alg:MultiRange}所示。该函数接受一个由Range组成的集合$ ranges $或待组合的Range列表$ range_1, range_2, \dots, range_n $。首先根据每个区间的左值和右值进行排序，得到有序的Range列表$ ranges $。并将$ ranges $中所有相互包含或相交的区间进行合并，得到有序的且不互相包含、连接的区间列表$ nRanges $。为了保证得到的MultiRange中Range的个数小于$ L_{MR} $，在算法结束前不断合并前后相邻的且距离最小的Range直至其个数满足要求。
 
 \begin{breakablealgorithm}
 	\caption{MultiRange的构造器$ [[\cdot]]_{MR} $}
